@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>p5.js Biosensing Prototype</title>
+    <style>
+        /* Basic styling to remove default margin/padding */
+        body {
+            padding: 0;
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars if canvas fits */
+            background-color: #101018; /* Match dark theme background */
+        }
+        main {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <!-- p5.js canvas will be created here by default -->
+    </main>
+
+    <!-- Link to the p5.js library file you downloaded -->
+    <script src="p5.js"></script>
+
+    <!-- Load Configuration Constants First -->
+    <!-- <script src="FY25/v0-1/config.js"></script> -->
+
+    <!-- Load Base Classes, UI Components & Handlers -->
+    <script src="ui_components.js"></script>
+
+    <!-- Load Specific Panel Subclasses -->
+    <!-- <script src="EEGPanel.js"></script> --> <!-- Keep this commented/removed for now -->
+    <!-- ... -->
+    <script src="panels.js"></script>
+
+    <!-- Load Utility Functions -->
+    <script src="utils.js"></script>
+
+    <!-- Load the Main Sketch Logic Last -->
+    <script src="sketch.js"></script>
+</body>
+</html>
