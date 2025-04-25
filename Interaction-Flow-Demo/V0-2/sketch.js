@@ -137,7 +137,7 @@ function drawBackendPanel(x, y, w, h) {
   fill(lightText);
   textSize(14);
   textAlign(LEFT, TOP);
-  text("SECTION 3: System Telemetry", 10, 10);
+  text("Section 3: System Log - Telemetry Stream", 10, 10);
   
   // Define content area (below title)
   let titleHeight = 30;
@@ -380,124 +380,147 @@ function setup() {
   cognitiveMsgColor = color(100, 170, 255); // Blue
   sensorMsgColor = color(255, 200, 100); // Orange
   
-  // Calculate section heights (divide screen into 3 sections)
+  // Define constants for input area
+  const inputElementHeight = 25; // Reduced height by 10% (from 28)
+  const inputAreaPadding = 5;   
+  const totalInputAreaHeight = inputElementHeight + inputAreaPadding * 2; 
+  const bottomMargin = 10;
+  const inputButtonGap = 10; 
+
+  // Calculate section heights with adjusted ratios
   let sectionPadding = 10;
-  let section1Height = height * 0.25; // Bio-signal inputs (25% of screen)
-  let section2Height = height * 0.25; // Cognitive state tracker (25% of screen)
-  let section3Height = height * 0.5 - 70; // Chat logs (50% of screen minus input area)
+  let section1Height = height * 0.3;
+  let section2Height = height * 0.25;
   
-  // SECTION 1: Bio-signal inputs (EEG and Webcam)
+  // Calculate section 3 height considering the new input area height
+  let section3Height = height - section1Height - section2Height - (sectionPadding * 3) - totalInputAreaHeight - bottomMargin;
+  
+  // SECTION 1: Bio-signal inputs
   let section1Y = sectionPadding;
   let leftPanelWidth = width * 0.6 - sectionPadding * 1.5;
   let rightPanelWidth = width * 0.4 - sectionPadding * 1.5;
   
-  // EEG panel (left side of section 1)
+  // EEG and Webcam panels
   eegX = sectionPadding;
   eegY = section1Y;
   eegW = leftPanelWidth;
   eegH = section1Height - sectionPadding;
   
-  // Webcam panel (right side of section 1)
   webcamX = eegX + eegW + sectionPadding;
   webcamY = section1Y;
   webcamW = rightPanelWidth;
   webcamH = section1Height - sectionPadding;
   
-  // SECTION 2: Cognitive and Emotional State Tracker
+  // SECTION 2: Cognitive State
   let section2Y = section1Y + section1Height + sectionPadding;
-  
-  // State panel (full width of section 2)
   stateX = sectionPadding;
   stateY = section2Y;
   stateW = width - sectionPadding * 2;
   stateH = section2Height - sectionPadding;
   
-  // SECTION 3: User-Agent and System Chat Logs
+  // SECTION 3: Chat and Backend
   let section3Y = section2Y + section2Height + sectionPadding;
-  
-  // Chat panel (left side of section 3)
   chatX = sectionPadding;
   chatY = section3Y;
   chatW = leftPanelWidth;
   chatH = section3Height;
   
-  // Backend panel (right side of section 3)
   backendX = chatX + chatW + sectionPadding;
   backendY = section3Y;
   backendW = rightPanelWidth;
   backendH = section3Height;
   
-  // Input area (below chat panel)
+  // INPUT AREA Calculations
+  let inputAreaY = section3Y + section3Height; 
   inputX = chatX;
-  inputY = height - 70 + sectionPadding;
+  inputY = inputAreaY + inputAreaPadding; 
   inputW = chatW;
-  inputH = 40;
+  inputH = inputElementHeight; // Use the updated constant height
   
-  // Create input field
-  inputElement = createInput();
-  inputElement.position(inputX + 10, inputY + 10);
-  inputElement.size(inputW - 100, inputH - 20);
-  inputElement.style('background-color', '#2a2a3a');
-  inputElement.style('color', '#ddd');
-  inputElement.style('border', 'none');
-  inputElement.style('border-radius', '5px');
-  inputElement.style('padding', '5px 10px');
-  inputElement.style('font-family', 'Arial');
-  inputElement.style('font-size', '14px');
+  try {
+    // Create input field (safely with try/catch)
+    let inputFieldWidth = inputW - 120; 
+    inputElement = createInput();
+    if (inputElement) {
+      inputElement.position(inputX + 10, inputY); 
+      inputElement.size(inputFieldWidth, inputH); // Use updated inputH
+      inputElement.style('background-color', '#2a2a3a');
+      inputElement.style('color', '#ddd');
+      inputElement.style('border', 'none');
+      inputElement.style('border-radius', '5px');
+      inputElement.style('padding', '5px 10px');
+      inputElement.style('font-family', 'Arial');
+      inputElement.style('font-size', '14px');
+      // Vertically align text inside input box using the updated height
+      inputElement.style('line-height', inputH + 'px'); 
+    }
+    
+    // Create send button
+    sendButton = createButton('Send');
+    if (sendButton) {
+      // Position button to the right of the input field with a gap, moved further right
+      let sendButtonX = inputX + 10 + inputFieldWidth + inputButtonGap + (80 * 0.15); // Add 15% of button width (80 * 0.15 = 12)
+      sendButton.position(sendButtonX, inputY); 
+      sendButton.size(80, inputH); // Use updated inputH
+      sendButton.style('background-color', accentColor1.toString());
+      sendButton.style('color', '#fff');
+      sendButton.style('border', 'none');
+      sendButton.style('border-radius', '5px');
+      sendButton.style('font-family', 'Arial');
+      sendButton.style('font-size', '14px');
+      sendButton.style('cursor', 'pointer');
+      sendButton.mousePressed(handleSubmit);
+    }
+    
+    // Create demo controls (ensure they align vertically)
+    demoButton = createButton('Start Demo');
+    if (demoButton) {
+      demoButton.position(backendX, inputY); 
+      demoButton.size(100, inputH); // Use updated inputH
+      demoButton.style('background-color', accentColor2.toString());
+      demoButton.style('color', '#fff');
+      demoButton.style('border', 'none');
+      demoButton.style('border-radius', '5px');
+      demoButton.style('font-family', 'Arial');
+      demoButton.style('font-size', '14px');
+      demoButton.style('cursor', 'pointer');
+      demoButton.mousePressed(toggleDemo);
+    }
+    
+    nextSceneButton = createButton('Next Scene');
+    if (nextSceneButton) {
+      nextSceneButton.position(backendX + 110, inputY); 
+      nextSceneButton.size(100, inputH); // Use updated inputH
+      nextSceneButton.style('background-color', accentColor1.toString());
+      nextSceneButton.style('color', '#fff');
+      nextSceneButton.style('border', 'none');
+      nextSceneButton.style('border-radius', '5px');
+      nextSceneButton.style('font-family', 'Arial');
+      nextSceneButton.style('font-size', '14px');
+      nextSceneButton.style('cursor', 'pointer');
+      nextSceneButton.mousePressed(nextScene);
+      nextSceneButton.hide(); // Hide until demo starts
+    }
+    
+    resetDemoButton = createButton('Reset Demo');
+    if (resetDemoButton) {
+      resetDemoButton.position(backendX + 220, inputY); 
+      resetDemoButton.size(100, inputH); // Use updated inputH
+      resetDemoButton.style('background-color', color(255, 100, 100).toString());
+      resetDemoButton.style('color', '#fff');
+      resetDemoButton.style('border', 'none');
+      resetDemoButton.style('border-radius', '5px');
+      resetDemoButton.style('font-family', 'Arial');
+      resetDemoButton.style('font-size', '14px');
+      resetDemoButton.style('cursor', 'pointer');
+      resetDemoButton.mousePressed(resetDemo);
+      resetDemoButton.hide(); // Hide until demo starts
+    }
+  } catch (e) {
+    console.error("Error setting up UI elements:", e);
+  }
   
-  // Create send button
-  sendButton = createButton('Send');
-  sendButton.position(inputX + inputW - 80, inputY + 10);
-  sendButton.size(80, 30);
-  sendButton.style('background-color', accentColor1.toString());
-  sendButton.style('color', '#fff');
-  sendButton.style('border', 'none');
-  sendButton.style('border-radius', '5px');
-  sendButton.style('font-family', 'Arial');
-  sendButton.style('font-size', '14px');
-  sendButton.style('cursor', 'pointer');
-  sendButton.mousePressed(handleSubmit);
-  
-  // Create demo controls - positioned at the bottom right
-  demoButton = createButton('Start Demo');
-  demoButton.position(backendX, inputY + 10);
-  demoButton.size(100, 30);
-  demoButton.style('background-color', accentColor2.toString());
-  demoButton.style('color', '#fff');
-  demoButton.style('border', 'none');
-  demoButton.style('border-radius', '5px');
-  demoButton.style('font-family', 'Arial');
-  demoButton.style('font-size', '14px');
-  demoButton.style('cursor', 'pointer');
-  demoButton.mousePressed(toggleDemo);
-  
-  nextSceneButton = createButton('Next Scene');
-  nextSceneButton.position(backendX + 110, inputY + 10);
-  nextSceneButton.size(100, 30);
-  nextSceneButton.style('background-color', accentColor1.toString());
-  nextSceneButton.style('color', '#fff');
-  nextSceneButton.style('border', 'none');
-  nextSceneButton.style('border-radius', '5px');
-  nextSceneButton.style('font-family', 'Arial');
-  nextSceneButton.style('font-size', '14px');
-  nextSceneButton.style('cursor', 'pointer');
-  nextSceneButton.mousePressed(nextScene);
-  nextSceneButton.hide(); // Hide until demo starts
-  
-  resetDemoButton = createButton('Reset Demo');
-  resetDemoButton.position(backendX + 220, inputY + 10);
-  resetDemoButton.size(100, 30);
-  resetDemoButton.style('background-color', color(255, 100, 100).toString());
-  resetDemoButton.style('color', '#fff');
-  resetDemoButton.style('border', 'none');
-  resetDemoButton.style('border-radius', '5px');
-  resetDemoButton.style('font-family', 'Arial');
-  resetDemoButton.style('font-size', '14px');
-  resetDemoButton.style('cursor', 'pointer');
-  resetDemoButton.mousePressed(resetDemo);
-  resetDemoButton.hide(); // Hide until demo starts
-  
-  // Add some initial messages
+  // Add initial messages
   addChatMessage("Agent", "Hello! How can I help you today?");
   
   // Test the telemetry panel
@@ -812,15 +835,14 @@ function drawStatePanel(x, y, w, h) {
   
   // Define layout constants
   const titleHeight = 30;
-  const padding = 20;
+  const padding = 15; 
+  const gaugeAreaWidth = w * 0.8; 
+  const emotionAreaWidth = w * 0.2; 
   
-  // We'll use 3/4 of the width for the three circular gauges
-  // and 1/4 for the emotion bar graph
-  const gaugeAreaWidth = w * 0.75;
-  const emotionAreaWidth = w * 0.25;
+  // Calculate gauge size and reduce by 3%
+  const gaugeSize = min(h - titleHeight - padding * 2, (gaugeAreaWidth / 3) - padding) * 1.15 * 0.97; // Apply 3% reduction
   
-  // Calculate gauge size and spacing for the three circular gauges
-  const gaugeSize = min(h - titleHeight - padding * 2, (gaugeAreaWidth / 3) - padding);
+  // Adjusted spacing to account for smaller gauges
   const gaugeSpacing = (gaugeAreaWidth - (gaugeSize * 3)) / 4;
   
   // Calculate vertical position (centered in available space)
@@ -908,8 +930,8 @@ function drawEmotionBar(x, y, w, h, emotion, intensity, color) {
   // Define padding for this function
   const padding = 10;
   
-  // Calculate bar dimensions - make the bar narrower
-  const barWidth = w * 0.3; // Reduced from 0.4 to 0.3
+  // Calculate bar dimensions - make the bar wider by ~3%
+  const barWidth = w * 0.3 * 1.03; // Increased width by 3%
   const barMaxHeight = h - padding * 4;
   const barHeight = barMaxHeight * intensity;
   const barX = w/2 - barWidth/2;
@@ -923,16 +945,16 @@ function drawEmotionBar(x, y, w, h, emotion, intensity, color) {
   fill(color);
   rect(barX, padding + barMaxHeight - barHeight, barWidth, barHeight, 5);
   
-  // Draw emotion name at the top
+  // Draw emotion name at the top with ~5% larger font
   fill(color);
   textAlign(CENTER, TOP);
-  textSize(14);
+  textSize(15); // Increased from 14
   text(emotion.toUpperCase(), w/2, padding * 0.5);
   
-  // Draw value in the middle of the bar
+  // Draw value in the middle of the bar with ~5% larger font
   fill(255);
   textAlign(CENTER, CENTER);
-  textSize(14);
+  textSize(15); // Increased from 14
   text(nf(intensity, 1, 2), w/2, padding + barMaxHeight/2);
   
   // Draw "Emotion" label at the bottom with same style as gauge labels
@@ -1299,7 +1321,7 @@ function drawChatPanel(x, y, w, h) {
   fill(lightText);
   textSize(14);
   textAlign(LEFT, TOP);
-  text("SECTION 3: User-Agent Dialogue", 10, 10);
+  text("Section 3: System Log - Dialogue Stream", 10, 10);
   
   // Define content area (below title)
   let titleHeight = 30;
@@ -1604,15 +1626,13 @@ function drawWrappedText(textContent, x, y, maxWidth) {
 }
 
 function drawInputArea(x, y, w, h) {
-  push();
-  translate(x, y);
-  
-  // Draw input area background
-  fill(panelBg);
-  noStroke();
-  rect(0, 0, w, h, 5);
-  
-  pop();
+  // No background rectangle needed here
+  // push();
+  // translate(x, y);
+  // fill(panelBg); // This was drawing the background rectangle
+  // noStroke();
+  // rect(0, 0, w, h, 5); 
+  // pop();
 }
 
 function addChatMessage(sender, text) {
@@ -1764,49 +1784,107 @@ function mouseWheel(event) {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   
-  // Update panel positions and sizes
-  chatX = 20;
-  chatY = height * 0.3 + 10;
-  chatW = width * 0.6 - 30;
-  chatH = height * 0.7 - 100;
+  // Define constants for input area (same as in setup)
+  const inputElementHeight = 25; // Reduced height
+  const inputAreaPadding = 5;
+  const totalInputAreaHeight = inputElementHeight + inputAreaPadding * 2;
+  const bottomMargin = 10;
+  const inputButtonGap = 10; 
+
+  // Calculate section heights with adjusted ratios
+  let sectionPadding = 10;
+  let section1Height = height * 0.3; 
+  let section2Height = height * 0.25; 
   
-  backendX = width * 0.6 + 10;
-  backendY = height * 0.3 + 10;
-  backendW = width * 0.4 - 30;
-  backendH = height * 0.7 - 100;
+  // Dynamic calculation for section 3 height using updated input area height
+  let section3Height = height - section1Height - section2Height - (sectionPadding * 3) - totalInputAreaHeight - bottomMargin;
   
-  // Adjust EEG and webcam widths - make EEG wider
-  eegX = chatX;
-  eegY = 20;
-  eegW = (chatW - 10) * 0.65; // Increased from 0.6 to 0.65
-  eegH = chatY - 30;
+  let leftPanelWidth = width * 0.6 - sectionPadding * 1.5;
+  let rightPanelWidth = width * 0.4 - sectionPadding * 1.5;
   
-  webcamX = eegX + eegW + 10;
-  webcamY = 20;
-  webcamW = (chatW - 10) * 0.35; // Decreased from 0.4 to 0.35
-  webcamH = chatY - 30;
+  // Recalculate all panel positions based on new heights/widths
+  // Section 1: Bio-signal panels
+  let section1Y = sectionPadding;
+  eegX = sectionPadding;
+  eegY = section1Y;
+  eegW = leftPanelWidth;
+  eegH = section1Height - sectionPadding;
   
-  stateX = backendX;
-  stateY = 20;
-  stateW = backendW;
-  stateH = chatY - 30;
+  webcamX = eegX + eegW + sectionPadding;
+  webcamY = section1Y;
+  webcamW = rightPanelWidth;
+  webcamH = section1Height - sectionPadding;
   
+  // Section 2: Cognitive state
+  let section2Y = section1Y + section1Height + sectionPadding;
+  stateX = sectionPadding;
+  stateY = section2Y;
+  stateW = width - sectionPadding * 2;
+  stateH = section2Height - sectionPadding;
+  
+  // Section 3: Chat and Backend
+  let section3Y = section2Y + section2Height + sectionPadding;
+  chatX = sectionPadding;
+  chatY = section3Y;
+  chatW = leftPanelWidth;
+  chatH = section3Height;
+  
+  backendX = chatX + chatW + sectionPadding;
+  backendY = section3Y;
+  backendW = rightPanelWidth;
+  backendH = section3Height;
+  
+  // Input area and buttons
+  let inputAreaY = section3Y + section3Height; 
   inputX = chatX;
-  inputY = height - 70;
+  inputY = inputAreaY + inputAreaPadding;
   inputW = chatW;
-  inputH = 40;
+  inputH = inputElementHeight; // Use the updated constant height
   
-  // Update input element position and size
-  inputElement.position(inputX + 10, inputY + 10);
-  inputElement.size(inputW - 100, inputH - 20);
-  
-  // Update send button position
-  sendButton.position(inputX + inputW - 80, inputY + 10);
-  
-  // Update demo controls - now positioned at the bottom
-  demoButton.position(backendX, inputY + 10);
-  nextSceneButton.position(backendX + 110, inputY + 10);
-  resetDemoButton.position(backendX + 220, inputY + 10);
+  try {
+    // Safety check - if input area goes off-screen, adjust section 3 height
+    if (inputAreaY + totalInputAreaHeight + bottomMargin > height) {
+      let overflow = (inputAreaY + totalInputAreaHeight + bottomMargin) - height;
+      section3Height -= overflow; 
+      // Recalculate positions based on adjusted section3Height
+      chatH = section3Height;
+      backendH = section3Height;
+      inputAreaY = section3Y + section3Height; 
+      inputY = inputAreaY + inputAreaPadding;
+    }
+    
+    // Update UI element positions and sizes (with null checks)
+    let inputFieldWidth = inputW - 120; 
+    if (inputElement && typeof inputElement.position === 'function') {
+      inputElement.position(inputX + 10, inputY);
+      inputElement.size(inputFieldWidth, inputH); // Use updated inputH
+      inputElement.style('line-height', inputH + 'px'); // Re-apply updated line-height
+    }
+    
+    if (sendButton && typeof sendButton.position === 'function') {
+      // Position button to the right of the input field with a gap, moved further right
+      let sendButtonX = inputX + 10 + inputFieldWidth + inputButtonGap + (80 * 0.15); // Add 15% of button width
+      sendButton.position(sendButtonX, inputY);
+      sendButton.size(80, inputH); // Use updated inputH
+    }
+    
+    if (demoButton && typeof demoButton.position === 'function') {
+      demoButton.position(backendX, inputY); 
+      demoButton.size(100, inputH); // Use updated inputH
+    }
+    
+    if (nextSceneButton && typeof nextSceneButton.position === 'function') {
+      nextSceneButton.position(backendX + 110, inputY); 
+      nextSceneButton.size(100, inputH); // Use updated inputH
+    }
+    
+    if (resetDemoButton && typeof resetDemoButton.position === 'function') {
+      resetDemoButton.position(backendX + 220, inputY); 
+      resetDemoButton.size(100, inputH); // Use updated inputH
+    }
+  } catch (e) {
+    console.error("Error resizing UI elements:", e);
+  }
 }
 
 // Refined emotion state system with more natural transitions
