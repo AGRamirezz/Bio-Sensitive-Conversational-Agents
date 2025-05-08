@@ -277,8 +277,9 @@ let demoScenes = [
     }
   },
   {
-    // Scene 3: Confused and Frustrated
-    agentMessage: "Key Excel functions include VLOOKUP for data retrieval, SUMIF/COUNTIF for conditional calculations, and pivot tables for summarizing large datasets. Let me demonstrate how pivot tables can transform sales data into regional performance insights.\n\nNow let's explore SQL fundamentals. SQL allows you to query databases to extract specific information. The basic syntax follows this pattern: SELECT columns FROM table WHERE conditions GROUP BY category HAVING group_conditions ORDER BY column;",
+    // Scene 3: Confused getting more confused
+    agentMessage: "Key Excel functions include VLOOKUP for data retrieval, SUMIF/COUNTIF for conditional calculations, and pivot tables for summarizing large datasets. Let me demonstrate how pivot tables can transform sales data into regional performance insights.",
+    agentMessage2: "Now let's explore SQL fundamentals. SQL allows you to query databases to extract specific information. The basic syntax follows this pattern: SELECT columns FROM table WHERE conditions GROUP BY category HAVING group_conditions ORDER BY column;",
     userResponse: "Hmmm...So it's like asking database questions?",
     bioSignals: {
       engagement: 0.4,
@@ -286,17 +287,17 @@ let demoScenes = [
       attention: 0.5,
       cognitiveLoad: 0.8
     },
-    transitionTo: "frustrated", // Will transition to frustrated during this scene
-    transitionDelay: 5000, // Transition after 5 seconds
+    transitionTo: "confused", // Stay confused but with worse cognitive metrics
+    transitionDelay: 8000, // Increased delay to 8 seconds to allow time for second message
     backendMessages: [
       { text: "Confusion detected. Recommend clarification protocol.", type: "cognitive" },
-      { text: "Cognitive load high. Recommend procedural adjustment.", type: "cognitive" },
-      { text: "Transitioning to frustrated state.", type: "cognitive" }
+      { text: "Cognitive load high. Recommend procedural adjustment.", type: "cognitive" }
     ]
   },
   {
     // Scene 4: Frustrated to Neutral
-    agentMessage: "I notice this might be challenging. Let me simplify. Think of SQL as a way to ask questions about your data. Let's break it down into smaller parts:\n\n• SELECT: What information do you want? (like customer names, sales amounts)\n• FROM: Where is this information stored? (which database table)\n• WHERE: Any specific conditions? (like sales over $1000)\n\nWould a visual example help?",
+    agentMessage: "I notice this might be challenging. Let me simplify. Think of SQL as a way to ask questions about your data. Let's break it down:",
+    agentMessage2: "SELECT: What data you want\nFROM: Which table to use\nWHERE: Any conditions to filter by\n\nWould you like me to show you a visual example?",
     userResponse: "Yeah, that makes more sense. I'm just trying to picture how I'd use this at work.",
     bioSignals: {
       engagement: 0.6,
@@ -305,16 +306,16 @@ let demoScenes = [
       cognitiveLoad: 0.6
     },
     transitionTo: "neutral", // Will transition to neutral during this scene
-    transitionDelay: 4000, // Transition after 4 seconds
+    transitionDelay: 6000, // Increased delay to 6 seconds
     backendMessages: [
       { text: "Frustration detected. Implementing simplification strategy.", type: "cognitive" },
-      { text: "Cognitive load decreasing. Continue current approach.", type: "cognitive" },
-      { text: "Transitioning to neutral state.", type: "cognitive" }
+      { text: "Cognitive load decreasing. Continue current approach.", type: "cognitive" }
     ]
   },
   {
     // Scene 5: Neutral to Happy
-    agentMessage: "Here's a simpler approach. Imagine a spreadsheet of customer data. SQL lets you filter and organize this data to answer business questions like 'Which products are most profitable?' or 'Are certain regions underperforming?' Let's start with a basic query to find total sales by region.\n\nLet's apply what we've learned to a real scenario. The NYSE S&P dataset contains financial data for major companies. How might we use Excel and SQL to identify investment opportunities based on financial performance trends?",
+    agentMessage: "Here's a simpler approach. Imagine a spreadsheet of customer data. SQL lets you filter and organize this data to answer business questions like 'Which products are most profitable?' or 'Are certain regions underperforming?'",
+    agentMessage2: "Let's apply what we've learned to a real scenario. The NYSE S&P dataset contains financial data for major companies. How might we use Excel and SQL to identify investment opportunities?",
     userResponse: "Hmm, maybe look at which companies are growing faster? Or find the ones that make steady money instead of going up and down all the time?",
     bioSignals: {
       engagement: 0.7,
@@ -323,16 +324,16 @@ let demoScenes = [
       cognitiveLoad: 0.5
     },
     transitionTo: "happy", // Will transition to happy during this scene
-    transitionDelay: 4000, // Transition after 4 seconds
+    transitionDelay: 6000, // Increased delay to 6 seconds
     backendMessages: [
       { text: "Understanding increasing. Concept acquisition successful.", type: "cognitive" },
-      { text: "Engagement metrics improving.", type: "cognitive" },
-      { text: "Transitioning to positive emotional state.", type: "cognitive" }
+      { text: "Engagement metrics improving.", type: "cognitive" }
     ]
   },
   {
     // Scene 6: Happy to Neutral
-    agentMessage: "Excellent approach! You could use SQL to extract year-over-year growth rates by sector, then visualize these trends in Excel or Tableau. This exact analysis helps investment firms identify promising sectors and companies. You're thinking like a business analyst now.\n\nYou've made excellent progress today. We covered Excel functions for data analysis, SQL basics for data querying, and applied these concepts to financial analysis. For our next session, we'll explore data visualization with Tableau. Would you like me to prepare any specific examples?",
+    agentMessage: "Excellent approach! You could use SQL to extract year-over-year growth rates by sector, then visualize these trends in Excel or Tableau. This exact analysis helps investment firms identify promising sectors and companies. You're thinking like a business analyst now.",
+    agentMessage2: "You've made excellent progress today. We covered Excel functions for data analysis, SQL basics for data querying, and applied these concepts to financial analysis. For our next session, we'll explore data visualization with Tableau. Would you like me to prepare any specific examples?",
     userResponse: "This was pretty cool. Next time could we look at making those dashboard things? My boss loves graphs and charts.",
     bioSignals: {
       engagement: 0.8,
@@ -341,11 +342,10 @@ let demoScenes = [
       cognitiveLoad: 0.4
     },
     transitionTo: "neutral", // Will transition to neutral during this scene
-    transitionDelay: 5000, // Transition after 5 seconds
+    transitionDelay: 6000, // Increased delay to 6 seconds
     backendMessages: [
       { text: "Session completion approaching. Preparing conclusion.", type: "system" },
-      { text: "User satisfaction metrics high.", type: "cognitive" },
-      { text: "Transitioning to neutral state for session closure.", type: "cognitive" }
+      { text: "User satisfaction metrics high.", type: "cognitive" }
     ]
   },
   {
@@ -583,13 +583,44 @@ function playScene(sceneIndex) {
   // Update bio signals
   engagementScore = scene.bioSignals.engagement;
   currentEmotion = scene.bioSignals.emotion;
+  emotionIntensity = 0.5; // Reset emotion intensity at start of scene
   
   // Add agent message (will be split automatically if long)
   addChatMessage("AI Instructor", scene.agentMessage);
   
+  // Add second agent message if it exists (with delay)
+  if (scene.agentMessage2) {
+    setTimeout(() => {
+      addChatMessage("AI Instructor", scene.agentMessage2);
+    }, 4000); // Increased delay to 4 seconds
+  }
+  
   // Add welcome message if available
   if (scene.welcomeMessage) {
     addChatMessage("AI Instructor", scene.welcomeMessage);
+  }
+  
+  // Handle within-scene transitions
+  if (scene.transitionTo) {
+    setTimeout(() => {
+      currentEmotion = scene.transitionTo;
+      emotionIntensity = 0.7;
+      
+      // Add transition message to backend
+      addBackendMessage("Emotional state transition: " + scene.bioSignals.emotion + " → " + scene.transitionTo, "cognitive");
+      
+      // Update bio signals for the new emotion
+      if (currentEmotion === "neutral") {
+        engagementScore = Math.min(engagementScore + 0.2, 0.9);
+        cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
+      } else if (currentEmotion === "happy") {
+        engagementScore = Math.min(engagementScore + 0.3, 0.9);
+        cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
+      } else if (currentEmotion === "frustrated") {
+        engagementScore = Math.max(engagementScore - 0.2, 0.2);
+        cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+      }
+    }, scene.transitionDelay || 6000);
   }
   
   // Add more detailed telemetry specifically for scenes 1 and 2
@@ -644,7 +675,24 @@ function playScene(sceneIndex) {
   if (scene.userResponse) {
     setTimeout(() => {
       addChatMessage("User", scene.userResponse);
-    }, 2000);
+    }, scene.agentMessage2 ? 7000 : 3000); // Longer delay if there's a second message
+  }
+  
+  // Handle final transition if specified
+  if (scene.finalEmotion) {
+    setTimeout(() => {
+      currentEmotion = scene.finalEmotion;
+      emotionIntensity = 0.6;
+      
+      // Add final transition message to backend
+      addBackendMessage("Final emotional state transition: " + scene.transitionTo + " → " + scene.finalEmotion, "cognitive");
+      
+      // Update bio signals for the final emotion
+      if (scene.finalEmotion === "neutral") {
+        engagementScore = 0.7;
+        cognitiveLoad = 0.5;
+      }
+    }, scene.finalTransitionDelay || 6000);
   }
 }
 
@@ -667,38 +715,12 @@ function nextScene() {
     // Add a message to the backend panel
     addBackendMessage("Scene " + (currentScene + 1) + " started", "system");
     
-    // Add more detailed scene transition messages
-    if (currentScene === 1) { // Transitioning to scene 2
-      addBackendMessage("User interaction pattern: Exploratory", "insight");
-      addBackendMessage("Emotional response trajectory: Positive", "cognitive");
-    }
-    else if (currentScene === 2) { // Transitioning to scene 3
-      addBackendMessage("Cognitive engagement pattern: Focused", "cognitive");
-      addBackendMessage("Attention metrics: Above threshold", "sensor");
-    }
-    
-    // Continue with existing functionality
+    // Set the initial emotion for this scene
     currentEmotion = demoScenes[currentScene].bioSignals.emotion;
     emotionIntensity = 0.5;
     
-    // Update chat with the new messages
-    addChatMessage("AI Instructor", demoScenes[currentScene].agentMessage);
-    
-    if (demoScenes[currentScene].userResponse) {
-      setTimeout(() => {
-        addChatMessage("User", demoScenes[currentScene].userResponse);
-      }, 1000);
-    }
-    
-    // Add any backend messages for this scene (with existing delay logic)
-    if (demoScenes[currentScene].backendMessages) {
-      for (let i = 0; i < demoScenes[currentScene].backendMessages.length; i++) {
-        let msg = demoScenes[currentScene].backendMessages[i];
-        setTimeout(() => {
-          addBackendMessage(msg.text, msg.type);
-        }, 500 + i * 1500);
-      }
-    }
+    // Use playScene which properly handles all aspects of scene playback
+    playScene(currentScene);
   }
 }
 
@@ -873,13 +895,16 @@ function draw() {
   // Draw background
   background(darkBg);
   
-  // If in demo mode, slightly animate EEG parameters
+  // If in demo mode, slightly animate EEG parameters and update demo scene
   if (demoMode) {
     // Add subtle animation to EEG parameters
     alphaAmplitude += sin(frameCount * 0.01) * 0.005;
     betaAmplitude += sin(frameCount * 0.02) * 0.005;
     thetaAmplitude += sin(frameCount * 0.015) * 0.003;
     deltaAmplitude += sin(frameCount * 0.005) * 0.002;
+    
+    // Update demo scene state
+    updateDemoScene();
   }
   
   // Draw panels with labels
@@ -1740,63 +1765,98 @@ function drawChatPanel(x, y, w, h) {
 
 // Improved text wrapping function that returns both width and height
 function calculateTextDimensions(textContent, maxWidth) {
-  let words = textContent.split(' ');
-  let line = '';
-  let lineCount = 1;
-  let lineHeight = 20; // Increased line height for better readability
+  // Handle newlines in text
+  let lines = textContent.split('\n');
+  let totalHeight = 0;
   let maxLineWidth = 0;
   
   textSize(13); // Set text size to match what will be used for rendering
   
-  for (let i = 0; i < words.length; i++) {
-    let testLine = line + words[i] + ' ';
-    let testWidth = textWidth(testLine);
+  // Process each line separately
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    let currentLine = lines[lineIndex];
     
-    if (testWidth > maxWidth) {
-      // This line is done, check if it's the widest so far
-      maxLineWidth = max(maxLineWidth, textWidth(line));
-      
-      // Start a new line
-      line = words[i] + ' ';
-      lineCount++;
-    } else {
-      line = testLine;
+    // If the line is empty, still account for its height
+    if (currentLine.trim() === '') {
+      totalHeight += 20; // Line height for empty lines
+      continue;
     }
+    
+    // Split the current line into words
+    let words = currentLine.split(' ');
+    let line = '';
+    let lineCount = 1;
+    let lineHeight = 20; // Increased line height for better readability
+    
+    for (let i = 0; i < words.length; i++) {
+      let testLine = line + words[i] + ' ';
+      let testWidth = textWidth(testLine);
+      
+      if (testWidth > maxWidth) {
+        // This line is done, check if it's the widest so far
+        maxLineWidth = max(maxLineWidth, textWidth(line));
+        
+        // Start a new line
+        line = words[i] + ' ';
+        lineCount++;
+      } else {
+        line = testLine;
+      }
+    }
+    
+    // Check the last line as well
+    maxLineWidth = max(maxLineWidth, textWidth(line));
+    
+    // Add this line's height to the total
+    totalHeight += lineCount * lineHeight;
   }
-  
-  // Check the last line as well
-  maxLineWidth = max(maxLineWidth, textWidth(line));
   
   return {
     width: maxLineWidth,
-    height: lineCount * lineHeight
+    height: totalHeight
   };
 }
 
 // Improved text drawing function with proper wrapping
 function drawWrappedText(textContent, x, y, maxWidth) {
-  let words = textContent.split(' ');
-  let line = '';
-  let lineHeight = 20; // Increased line height for better readability
+  // Handle newlines in text
+  let lines = textContent.split('\n');
   let currentY = y;
   
   textSize(13); // Ensure text size is consistent
   
-  for (let i = 0; i < words.length; i++) {
-    let testLine = line + words[i] + ' ';
-    let testWidth = textWidth(testLine);
+  // Process each line separately
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    let currentLine = lines[lineIndex];
     
-    if (testWidth > maxWidth) {
-      text(line, x, currentY);
-      line = words[i] + ' ';
-      currentY += lineHeight;
-    } else {
-      line = testLine;
+    // If the line is empty, just add the line height
+    if (currentLine.trim() === '') {
+      currentY += 20; // Line height for empty lines
+      continue;
     }
+    
+    // Split the current line into words
+    let words = currentLine.split(' ');
+    let line = '';
+    let lineHeight = 20; // Increased line height for better readability
+    
+    for (let i = 0; i < words.length; i++) {
+      let testLine = line + words[i] + ' ';
+      let testWidth = textWidth(testLine);
+      
+      if (testWidth > maxWidth) {
+        text(line, x, currentY);
+        line = words[i] + ' ';
+        currentY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    
+    // Draw the last line of this paragraph
+    text(line, x, currentY);
+    currentY += lineHeight;
   }
-  
-  // Draw the last line
-  text(line, x, currentY);
 }
 
 function drawInputArea(x, y, w, h) {
@@ -1817,25 +1877,34 @@ function addChatMessage(sender, text) {
       sender = sender.charAt(0).toUpperCase() + sender.slice(1).toLowerCase();
   }
 
-  
   // Split long messages into multiple bubbles (for AI Instructor only)
-  if (sender === "AI Instructor" && text.length > 200) { // Check for "AI Instructor"
-    // Split by paragraphs first
-    let paragraphs = text.split("\n\n");
-    
-    if (paragraphs.length > 1) {
-      // If there are multiple paragraphs, send each as a separate message
+  if (sender === "AI Instructor") {
+    // First check if there are explicit newline separators
+    if (text.includes("\n\n")) {
+      // If there are paragraph breaks, split by those first
+      let paragraphs = text.split("\n\n");
+      
       for (let paragraph of paragraphs) {
         if (paragraph.trim().length > 0) {
           chatMessages.push({ 
-            sender: sender, // Use updated sender
+            sender: sender,
             text: paragraph.trim(), 
             timestamp: Date.now() 
           });
         }
       }
-    } else {
-      // If it's just one long paragraph, split by sentences
+    } 
+    // Check for single newlines that should be preserved
+    else if (text.includes("\n") && text.length < 250) {
+      // If it contains newlines but isn't too long, keep it as one message
+      chatMessages.push({ 
+        sender: sender,
+        text: text, 
+        timestamp: Date.now() 
+      });
+    }
+    // For long messages without newlines, split by sentences
+    else if (text.length > 200) {
       let sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
       let currentMessage = "";
       
@@ -1843,7 +1912,7 @@ function addChatMessage(sender, text) {
         if ((currentMessage + sentence).length > 200) {
           if (currentMessage.length > 0) {
             chatMessages.push({ 
-              sender: sender, // Use updated sender
+              sender: sender,
               text: currentMessage.trim(), 
               timestamp: Date.now() 
             });
@@ -1856,16 +1925,23 @@ function addChatMessage(sender, text) {
       
       if (currentMessage.length > 0) {
         chatMessages.push({ 
-          sender: sender, // Use updated sender
+          sender: sender,
           text: currentMessage.trim(), 
           timestamp: Date.now() 
         });
       }
+    } else {
+      // For shorter AI messages, add as is
+      chatMessages.push({ 
+        sender: sender,
+        text: text, 
+        timestamp: Date.now() 
+      });
     }
   } else {
-    // For user messages or short AI messages, add as is
+    // For user messages, add as is
     chatMessages.push({ 
-      sender: sender, // Use updated sender
+      sender: sender,
       text: text, 
       timestamp: Date.now() 
     });
@@ -1883,7 +1959,7 @@ function addChatMessage(sender, text) {
   }
   
   // Add pulse effect to chat panel using updated colors
-  let pulseColor = sender === "User" ? color(60, 60, 80) : accentColor2; // Use new colors
+  let pulseColor = sender === "User" ? color(60, 60, 80) : accentColor2;
   addPulseEffect(chatX, chatY, chatW, chatH, pulseColor);
   
   // Change engagement score slightly for demo purposes
@@ -2153,8 +2229,7 @@ function updateEmotionState() {
           // Log the emotion change
           console.log("Demo scene " + currentScene + ": Emotion changed to " + currentEmotion);
           
-          // Add backend message about the emotion change
-          addBackendMessage("Emotion state transition: " + currentEmotion, "cognitive");
+          // Removed emotion state transition message
         }
       } else {
         // If we're at the target emotion, allow natural fluctuations in intensity
@@ -2330,40 +2405,62 @@ function updateDemoScene() {
   
   let scene = demoScenes[currentScene];
   let currentTime = millis();
+  let elapsedTime = currentTime - sceneStartTime;
   
-  // Handle scene-specific emotion transitions
-  if (scene.transitionTo && !scene.transitioned && 
-      currentTime - sceneStartTime > scene.transitionDelay) {
-    // Perform the first transition
-    currentEmotion = scene.transitionTo;
-    emotionIntensity = 0.7; // Start with higher intensity
-    scene.transitioned = true; // Mark as transitioned
+  // Handle within-scene emotional transitions
+  if (scene.transitionTo && !scene.transitioned && elapsedTime >= scene.transitionDelay) {
+    // If staying in the same emotion but with different intensity (Scene 3 - confused)
+    if (scene.transitionTo === currentEmotion) {
+      // Keep same emotion but worsen cognitive metrics
+      emotionIntensity = 0.9; // Increase intensity
+      cognitiveLoad = Math.min(cognitiveLoad + 0.15, 0.95); // Increase cognitive load
+      engagementScore = Math.max(engagementScore - 0.1, 0.3); // Decrease engagement
+      attentionScore = Math.max(attentionScore - 0.1, 0.4); // Decrease attention
+      
+      // Add a subtle visual indication
+      addPulseEffect(stateX, stateY, stateW, stateH, color(255, 180, 0)); // Orange pulse for deepening confusion
+      addBackendMessage("Increased cognitive load detected", "cognitive");
+    } else {
+      // Regular emotion transition
+      currentEmotion = scene.transitionTo;
+      emotionIntensity = 0.7;
+      
+      // Add a subtle visual indication
+      addPulseEffect(stateX, stateY, stateW, stateH, accentColor2);
+      addBackendMessage("Emotion changed to " + scene.transitionTo, "cognitive");
+      
+      // Update bio signals for the new emotion
+      if (currentEmotion === "neutral") {
+        engagementScore = Math.min(engagementScore + 0.2, 0.9);
+        cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
+      } else if (currentEmotion === "happy") {
+        engagementScore = Math.min(engagementScore + 0.3, 0.9);
+        cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
+      } else if (currentEmotion === "frustrated") {
+        engagementScore = Math.max(engagementScore - 0.2, 0.2);
+        cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+      }
+    }
     
-    // Add backend message about the transition
-    addBackendMessage("Emotion transition: " + scene.transitionTo, "cognitive");
-    
-    console.log("Scene " + currentScene + ": Transitioned to " + scene.transitionTo);
+    scene.transitioned = true;
   }
   
-  // Handle final transition for Scene 7
-  if (scene.finalEmotion && scene.transitioned && !scene.finalTransitioned &&
-      currentTime - sceneStartTime > scene.finalTransitionDelay) {
-    // Perform the final transition
+  // Handle final transitions if applicable
+  if (scene.finalEmotion && scene.transitioned && !scene.finalTransitioned && 
+      elapsedTime >= scene.finalTransitionDelay) {
     currentEmotion = scene.finalEmotion;
-    emotionIntensity = 0.6; // Slightly lower intensity
-    scene.finalTransitioned = true; // Mark as transitioned
+    emotionIntensity = 0.6;
+    scene.finalTransitioned = true;
     
-    // Add backend message about the final transition
-    addBackendMessage("Final emotion transition: " + scene.finalEmotion, "cognitive");
+    // Add a subtle visual indication
+    addPulseEffect(stateX, stateY, stateW, stateH, accentColor1);
+    addBackendMessage("Final emotion state: " + scene.finalEmotion, "cognitive");
     
-    console.log("Scene " + currentScene + ": Final transition to " + scene.finalEmotion);
-  }
-  
-  // Play the agent response if not already played
-  if (!scene.agentResponsePlayed && scene.agentResponse) {
-    // Use AI Instructor as the sender for agent responses
-    addChatMessage("AI Instructor", scene.agentResponse);
-    scene.agentResponsePlayed = true;
+    // Update bio signals for the final emotion
+    if (scene.finalEmotion === "neutral") {
+      engagementScore = 0.7;
+      cognitiveLoad = 0.5;
+    }
   }
 }
 
@@ -2390,25 +2487,8 @@ function nextScene() {
     currentEmotion = demoScenes[currentScene].bioSignals.emotion;
     emotionIntensity = 0.5;
     
-    // Update chat with the new messages
-    addChatMessage("Agent", demoScenes[currentScene].agentMessage);
-    
-    if (demoScenes[currentScene].userResponse) {
-      setTimeout(() => {
-        addChatMessage("User", demoScenes[currentScene].userResponse);
-      }, 1000);
-    }
-    
-    // Add any backend messages for this scene
-    if (demoScenes[currentScene].backendMessages) {
-      for (let i = 0; i < demoScenes[currentScene].backendMessages.length; i++) {
-        let msg = demoScenes[currentScene].backendMessages[i];
-        // Add with a slight delay between messages
-        setTimeout(() => {
-          addBackendMessage(msg.text, msg.type);
-        }, 500 + i * 1500);
-      }
-    }
+    // Use playScene which properly handles all aspects of scene playback
+    playScene(currentScene);
   }
 }
 
