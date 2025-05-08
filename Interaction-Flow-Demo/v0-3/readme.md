@@ -4,6 +4,49 @@
 
 This project implements an interactive dashboard for visualizing cognitive and emotional states in real-time. It's designed to display bio-signal data from EEG readings and computer vision, tracking engagement, attention, cognitive load, and emotional states. A preliminary integration with a local LLM for bio-adaptive responses has been added as an experimental feature.
 
+## Environment Setup
+
+### Using Conda Environment (Recommended)
+
+1. **Set up the conda environment using the provided environment.yml file:**
+   ```bash
+   # Before using the environment.yml file, remove or update the prefix line to match your system
+   # Open environment.yml and delete the 'prefix:' line or update it with your path
+   
+   # Create the environment from the YAML file
+   conda env create -f environment.yml
+   
+   # Activate the environment
+   conda activate bio_agent1
+   
+   # Install required packages
+   pip install -r requirements.txt
+   ```
+
+2. **If you prefer to create the environment manually:**
+   ```bash
+   # Create a new conda environment
+   conda create -n bio_agent1 python=3.9
+   
+   # Activate the environment
+   conda activate bio_agent1
+   
+   # Install required packages
+   pip install -r requirements.txt
+   ```
+
+3. **To export your environment (for sharing with others):**
+   ```bash
+   conda env export --from-history --no-builds > environment.yml
+   ```
+
+### Required Packages
+The application requires the following Python packages:
+- flask
+- flask_cors
+- requests
+- gpt4all
+
 ## Features
 
 ### 1. Bio-Signal Input Visualization
@@ -47,21 +90,26 @@ The dashboard displays four key metrics:
 
 ### Using the LLM Integration
 
-1. Start the Python server:
+1. **Ensure your conda environment is activated:**
+   ```bash
+   conda activate bio_agent1
    ```
+
+2. **Start the Python server:**
+   ```bash
    python LLM_Server.py
    ```
    - First run will download the Mistral model (~4GB)
    - Server runs on http://localhost:5000
 
-2. Serve the p5.js application:
-   ```
+3. **Serve the p5.js application:**
+   ```bash
    npx http-server . -c-1 -p 8000
    ```
 
-3. Open your browser to http://localhost:8000
+4. **Open your browser to http://localhost:8000**
 
-4. Type messages in the chat box to interact with the AI tutor
+5. **Type messages in the chat box to interact with the AI tutor**
    - The system sends current cognitive/emotional state with each message
    - Responses are conditioned based on these bio-signals
 
