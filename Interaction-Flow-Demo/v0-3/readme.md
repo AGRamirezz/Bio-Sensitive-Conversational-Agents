@@ -68,7 +68,16 @@ The dashboard displays four key metrics:
 - Simulates different learning scenarios with corresponding bio-signal patterns
 - Demonstrates how cognitive and emotional states change during different phases of learning
 
-### 4. AI Integration (Preliminary)
+### 4. Dynamic State Changes in Non-Demo Mode (New)
+
+- **Responsive Emotional States**: Outside of demo mode, the system now dynamically changes emotional and cognitive states in response to AI interaction
+- **Triggered by AI Responses**: Each time the AI Instructor responds, the system may transition to a new emotional state
+- **Intelligent Transitions**: Changes are not random but follow a probability model based on current emotional state
+- **Coherent Cognitive Metrics**: When emotional states change, engagement, attention, and cognitive load metrics shift accordingly
+- **Realistic Bio-Signals**: EEG wave patterns and facial expressions update to match the new emotional state
+- **Contextual Telemetry**: System provides appropriate backend messages reflecting the state changes
+
+### 5. AI Integration (Preliminary)
 
 - **Experimental LLM Server**: Python backend running a local Mistral model
 - **Early bio-adaptive response system**: Basic conditioning of AI responses based on user's cognitive state
@@ -82,11 +91,34 @@ The dashboard displays four key metrics:
 - Responsive design that adapts to different screen sizes
 - Python backend with Flask for the AI integration
 
+### Recent Code Improvements
+
+- Chat bubbles now properly display formatted text and multi-line messages
+- Streamlined telemetry messages for clearer information display
+- Improved timing for AI-user turn-taking for more natural interaction flow
+- Enhanced state transition system with probabilistic emotional changes
+
+## Using the Dynamic State System
+
+In regular (non-demo) mode, the system now behaves much more like a real-time bio-adaptive interface:
+
+1. Start a conversation with the AI Instructor
+2. After each AI response, watch for subtle changes in the user's emotional and cognitive state
+3. Notice how different emotions affect the EEG patterns, cognitive metrics, and facial expressions
+4. The telemetry panel will provide insights into these transitions
+
+Emotional transitions follow these patterns:
+- From **Neutral**: May transition to any state, with higher probability toward happy and confused
+- From **Happy**: Most likely to return to neutral, with small chance of confusion
+- From **Confused**: May resolve to neutral or escalate to frustrated
+- From **Frustrated**: Tends to de-escalate to neutral or confused states
+
 ## Usage
 
 1. Open the application in a web browser
 2. Observe the real-time visualization of cognitive and emotional states
 3. In demo mode, watch how the metrics change through different learning scenarios
+4. In regular mode, interact with the AI and observe the dynamic state changes
 
 ### Using the LLM Integration
 
@@ -112,6 +144,7 @@ The dashboard displays four key metrics:
 5. **Type messages in the chat box to interact with the AI tutor**
    - The system sends current cognitive/emotional state with each message
    - Responses are conditioned based on these bio-signals
+   - Watch how the emotional and cognitive states dynamically respond to the conversation
 
 ## TODO Items
 
@@ -126,6 +159,11 @@ The dashboard displays four key metrics:
   - Add server status indicator
   - Implement conversation reset functionality
   - Add model parameter controls
+
+- **Dynamic State System Enhancements**:
+  - Further refine state transition probabilities based on message content
+  - Implement gradual transitions between emotional states
+  - Add more varied telemetry messages for different transitions
 
 - **Future Development**:
   - Integration with recorded EEG data
