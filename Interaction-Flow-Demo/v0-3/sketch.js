@@ -101,6 +101,14 @@ function updatePulseEffects() {
 
 // Function to add backend message
 function addBackendMessage(text, type = "system") {
+  // Skip emotional transition messages
+  if (text.includes("Emotional state transition:") || 
+      text.includes("Final emotional state transition:") ||
+      text.includes("Emotion changed to") ||
+      text.includes("Final emotion state:")) {
+    return; // Don't add these messages
+  }
+  
   backendMessages.push({
     text: text,
     timestamp: Date.now(),
@@ -541,6 +549,19 @@ function setup() {
   // Add initial message with "AI Instructor"
   addChatMessage("AI Instructor", "Hello! How can I help you today?");
   
+  // Initialize emotional and cognitive states with reasonable values
+  currentEmotion = "neutral";
+  emotionIntensity = 0.5;
+  engagementScore = 0.7;
+  attentionScore = 0.65;
+  cognitiveLoad = 0.4;
+  
+  // Initialize EEG wave parameters for neutral state
+  alphaAmplitude = 0.5 + Math.random() * 0.1;
+  betaAmplitude = 0.5 + Math.random() * 0.1;
+  thetaAmplitude = 0.3 + Math.random() * 0.1;
+  deltaAmplitude = 0.3 + Math.random() * 0.1;
+  
   // Replace testTimestamp with more useful initialization messages
   addBackendMessage("System initialized", "system");
   addBackendMessage("Bio-signal processing ready", "sensor");
@@ -592,7 +613,7 @@ function playScene(sceneIndex) {
   if (scene.agentMessage2) {
     setTimeout(() => {
       addChatMessage("AI Instructor", scene.agentMessage2);
-    }, 4000); // Increased delay to 4 seconds
+    }, 3000); // Reduced from 4000 to 3000 ms for better flow
   }
   
   // Add welcome message if available
@@ -606,8 +627,8 @@ function playScene(sceneIndex) {
       currentEmotion = scene.transitionTo;
       emotionIntensity = 0.7;
       
-      // Add transition message to backend
-      addBackendMessage("Emotional state transition: " + scene.bioSignals.emotion + " → " + scene.transitionTo, "cognitive");
+      // Remove transition message from backend
+      // addBackendMessage("Emotional state transition: " + scene.bioSignals.emotion + " → " + scene.transitionTo, "cognitive");
       
       // Update bio signals for the new emotion
       if (currentEmotion === "neutral") {
@@ -661,13 +682,13 @@ function playScene(sceneIndex) {
     }, 4500);
   }
   
-  // Add any existing backend messages from the scene definition
+  // Add any backend messages from the scene definition
   if (scene.backendMessages) {
     for (let i = 0; i < scene.backendMessages.length; i++) {
       let msg = scene.backendMessages[i];
       setTimeout(() => {
         addBackendMessage(msg.text, msg.type);
-      }, 6000 + i * 1500); // Start after our custom messages
+      }, 4500 + i * 1200); // Reduced from 6000 + i * 1500 for faster display
     }
   }
   
@@ -675,7 +696,7 @@ function playScene(sceneIndex) {
   if (scene.userResponse) {
     setTimeout(() => {
       addChatMessage("User", scene.userResponse);
-    }, scene.agentMessage2 ? 7000 : 3000); // Longer delay if there's a second message
+    }, scene.agentMessage2 ? 5500 : 2000); // Reduced delays for quicker turn-taking
   }
   
   // Handle final transition if specified
@@ -684,8 +705,8 @@ function playScene(sceneIndex) {
       currentEmotion = scene.finalEmotion;
       emotionIntensity = 0.6;
       
-      // Add final transition message to backend
-      addBackendMessage("Final emotional state transition: " + scene.transitionTo + " → " + scene.finalEmotion, "cognitive");
+      // Remove final transition message from backend
+      // addBackendMessage("Final emotional state transition: " + scene.transitionTo + " → " + scene.finalEmotion, "cognitive");
       
       // Update bio signals for the final emotion
       if (scene.finalEmotion === "neutral") {
@@ -743,7 +764,7 @@ function startDemo() {
   
   setTimeout(() => {
     addChatMessage("User", demoScenes[currentScene].userResponse);
-  }, 1000);
+  }, 800); // Reduced from 1000 to 800ms for quicker response
   
   // Add more detailed system startup messages
   addBackendMessage("Demo mode initialized", "system");
@@ -905,6 +926,18 @@ function draw() {
     
     // Update demo scene state
     updateDemoScene();
+  } else {
+    // In non-demo mode, add subtle random variations to the signals
+    alphaAmplitude += (sin(frameCount * 0.01) * 0.003) + (random(-0.002, 0.002));
+    betaAmplitude += (sin(frameCount * 0.02) * 0.003) + (random(-0.002, 0.002));
+    thetaAmplitude += (sin(frameCount * 0.015) * 0.002) + (random(-0.001, 0.001));
+    deltaAmplitude += (sin(frameCount * 0.005) * 0.002) + (random(-0.001, 0.001));
+    
+    // Keep values in reasonable range
+    alphaAmplitude = constrain(alphaAmplitude, 0.1, 1.0);
+    betaAmplitude = constrain(betaAmplitude, 0.1, 1.0);
+    thetaAmplitude = constrain(thetaAmplitude, 0.1, 0.8);
+    deltaAmplitude = constrain(deltaAmplitude, 0.1, 0.8);
   }
   
   // Draw panels with labels
@@ -1999,7 +2032,7 @@ function handleSubmit() {
   };
   
   // Add telemetry message
-  addBackendMessage("Sending request to LLM with bio-signals...", "system");
+  addBackendMessage("Sending request to LLM...", "system");
   
   // Show processing state
   isWaitingForResponse = true;
@@ -2027,11 +2060,10 @@ function handleSubmit() {
     if (data.message) {
       addChatMessage("AI Instructor", data.message);
       
-      // Add telemetry about the response parameters
-      addBackendMessage(
-        `LLM response generated with temperature=${data.parameters_used?.temperature?.toFixed(2) || "0.7"}`,
-        "cognitive"
-      );
+      // Trigger random state change after AI responds (if not in demo mode)
+      setTimeout(() => {
+        triggerRandomStateChange();
+      }, 1500); // Delay state change to make it feel responsive to the AI's message
     } else if (data.error) {
       addBackendMessage("Error: " + data.error, "error");
     }
@@ -2427,7 +2459,8 @@ function updateDemoScene() {
       
       // Add a subtle visual indication
       addPulseEffect(stateX, stateY, stateW, stateH, accentColor2);
-      addBackendMessage("Emotion changed to " + scene.transitionTo, "cognitive");
+      // Remove emotion change message
+      // addBackendMessage("Emotion changed to " + scene.transitionTo, "cognitive");
       
       // Update bio signals for the new emotion
       if (currentEmotion === "neutral") {
@@ -2454,7 +2487,8 @@ function updateDemoScene() {
     
     // Add a subtle visual indication
     addPulseEffect(stateX, stateY, stateW, stateH, accentColor1);
-    addBackendMessage("Final emotion state: " + scene.finalEmotion, "cognitive");
+    // Remove final emotion state message
+    // addBackendMessage("Final emotion state: " + scene.finalEmotion, "cognitive");
     
     // Update bio signals for the final emotion
     if (scene.finalEmotion === "neutral") {
@@ -2511,7 +2545,7 @@ function startDemo() {
   
   setTimeout(() => {
     addChatMessage("User", demoScenes[currentScene].userResponse);
-  }, 1000);
+  }, 800); // Reduced from 1000 to 800ms for quicker response
   
   // Add more detailed system startup messages
   addBackendMessage("Demo mode initialized", "system");
@@ -2676,3 +2710,147 @@ function testTimestamp() {
 
 // Call this function to test
 // testTimestamp();
+
+// Function to trigger random state changes in non-demo mode
+function triggerRandomStateChange() {
+  if (demoMode) return; // Only run in non-demo mode
+  
+  // Get current emotion
+  let previousEmotion = currentEmotion;
+  
+  // Define transition probabilities based on current emotion
+  let transitionProbabilities = {};
+  
+  if (currentEmotion === "neutral") {
+    transitionProbabilities = {
+      "happy": 0.4,
+      "confused": 0.3,
+      "frustrated": 0.1,
+      "neutral": 0.2  // chance to stay the same
+    };
+  } else if (currentEmotion === "happy") {
+    transitionProbabilities = {
+      "neutral": 0.5,
+      "confused": 0.2,
+      "frustrated": 0.1,
+      "happy": 0.2  // chance to stay the same
+    };
+  } else if (currentEmotion === "confused") {
+    transitionProbabilities = {
+      "neutral": 0.3,
+      "happy": 0.2,
+      "frustrated": 0.3,
+      "confused": 0.2  // chance to stay the same
+    };
+  } else if (currentEmotion === "frustrated") {
+    transitionProbabilities = {
+      "neutral": 0.4,
+      "confused": 0.3,
+      "happy": 0.1,
+      "frustrated": 0.2  // chance to stay the same
+    };
+  }
+  
+  // Select new emotion based on probabilities
+  let random = Math.random();
+  let cumulativeProbability = 0;
+  let newEmotion = currentEmotion; // default to staying the same
+  
+  for (let emotion in transitionProbabilities) {
+    cumulativeProbability += transitionProbabilities[emotion];
+    if (random <= cumulativeProbability) {
+      newEmotion = emotion;
+      break;
+    }
+  }
+  
+  // Only continue if the emotion actually changed
+  if (newEmotion === previousEmotion) return;
+  
+  // Update the emotion
+  currentEmotion = newEmotion;
+  emotionIntensity = 0.7; // Set a moderate-high intensity for the new emotion
+  
+  // Update cognitive metrics based on new emotion
+  updateCognitiveMetricsForEmotion(newEmotion);
+  
+  // Add pulse effect to state panel to indicate change
+  addPulseEffect(stateX, stateY, stateW, stateH, accentColor2);
+  
+  // Add telemetry messages
+  addStateChangeTelemetry(previousEmotion, newEmotion);
+}
+
+// Function to update cognitive metrics based on emotion
+function updateCognitiveMetricsForEmotion(emotion) {
+  if (emotion === "happy") {
+    engagementScore = Math.min(0.8 + Math.random() * 0.15, 0.95);
+    attentionScore = Math.min(0.75 + Math.random() * 0.15, 0.9);
+    cognitiveLoad = Math.max(0.2 + Math.random() * 0.2, 0.25);
+  } else if (emotion === "neutral") {
+    engagementScore = 0.6 + Math.random() * 0.2;
+    attentionScore = 0.55 + Math.random() * 0.25;
+    cognitiveLoad = 0.4 + Math.random() * 0.2;
+  } else if (emotion === "confused") {
+    engagementScore = Math.max(0.4 + Math.random() * 0.2, 0.35);
+    attentionScore = Math.max(0.5 + Math.random() * 0.15, 0.4);
+    cognitiveLoad = Math.min(0.7 + Math.random() * 0.2, 0.9);
+  } else if (emotion === "frustrated") {
+    engagementScore = Math.max(0.2 + Math.random() * 0.2, 0.25);
+    attentionScore = Math.max(0.3 + Math.random() * 0.2, 0.35);
+    cognitiveLoad = Math.min(0.8 + Math.random() * 0.15, 0.95);
+  }
+  
+  // Update EEG wave parameters based on the new emotional state
+  updateEEGWavesForEmotion(emotion);
+}
+
+// Function to update EEG wave parameters based on emotion
+function updateEEGWavesForEmotion(emotion) {
+  if (emotion === "happy") {
+    alphaAmplitude = 0.8 + Math.random() * 0.1;  // High alpha (relaxation)
+    betaAmplitude = 0.4 + Math.random() * 0.1;   // Lower beta (less mental effort)
+    thetaAmplitude = 0.3 + Math.random() * 0.1;  // Low theta
+    deltaAmplitude = 0.2 + Math.random() * 0.1;  // Low delta
+  } else if (emotion === "neutral") {
+    alphaAmplitude = 0.5 + Math.random() * 0.1;  // Moderate alpha
+    betaAmplitude = 0.5 + Math.random() * 0.1;   // Moderate beta
+    thetaAmplitude = 0.3 + Math.random() * 0.1;  // Moderate theta
+    deltaAmplitude = 0.3 + Math.random() * 0.1;  // Moderate delta
+  } else if (emotion === "confused") {
+    alphaAmplitude = 0.3 + Math.random() * 0.1;  // Low alpha (less relaxation)
+    betaAmplitude = 0.8 + Math.random() * 0.1;   // High beta (mental effort)
+    thetaAmplitude = 0.5 + Math.random() * 0.1;  // Higher theta (distraction)
+    deltaAmplitude = 0.3 + Math.random() * 0.1;  // Moderate delta
+  } else if (emotion === "frustrated") {
+    alphaAmplitude = 0.2 + Math.random() * 0.1;  // Very low alpha (stress)
+    betaAmplitude = 0.9 + Math.random() * 0.1;   // Very high beta (high mental effort)
+    thetaAmplitude = 0.4 + Math.random() * 0.1;  // Moderate-high theta
+    deltaAmplitude = 0.5 + Math.random() * 0.1;  // Higher delta (discomfort)
+  }
+}
+
+// Function to add appropriate telemetry messages for state changes
+function addStateChangeTelemetry(previousEmotion, newEmotion) {
+  // Add a system message
+  addBackendMessage("Bio-signal pattern updated", "system");
+  
+  // Add cognitive messages based on the transition
+  if (newEmotion === "happy") {
+    addBackendMessage("Cognitive response: Positive pattern detected", "cognitive");
+    addBackendMessage("Engagement metrics increasing", "cognitive");
+    addBackendMessage("Alpha wave activity elevated", "sensor");
+  } else if (newEmotion === "neutral") {
+    addBackendMessage("Cognitive metrics stabilizing", "cognitive");
+    addBackendMessage("Attention focus: Baseline", "cognitive");
+    addBackendMessage("Brainwave activity: Normalized patterns", "sensor");
+  } else if (newEmotion === "confused") {
+    addBackendMessage("Cognitive load increasing", "cognitive");
+    addBackendMessage("Processing complexity detected", "cognitive");
+    addBackendMessage("Beta wave activity elevated", "sensor");
+  } else if (newEmotion === "frustrated") {
+    addBackendMessage("Attention metrics decreasing", "cognitive");
+    addBackendMessage("Response processing challenge detected", "cognitive");
+    addBackendMessage("EEG: Alpha suppression, high beta activity", "sensor");
+  }
+}
