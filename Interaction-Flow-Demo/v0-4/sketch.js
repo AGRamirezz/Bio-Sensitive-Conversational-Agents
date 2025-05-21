@@ -69,9 +69,10 @@ let attentionScore = 0.7;      // Default attention score
 let cognitiveLoad = 0.5;       // Default cognitive load
 
 // Add these global variables near the top of the file with other globals
+// These are CRITICAL for webcam functionality
 let webcamControlsState = false; // Flag to indicate if webcam is controlling the state
 let lastWebcamUpdate = 0; // Timestamp of last webcam update
-const WEBCAM_UPDATE_INTERVAL = 1000; // Update from webcam once per second
+const WEBCAM_UPDATE_INTERVAL = 500; // Update from webcam twice per second (was 1000)
 
 // Function to add pulse effect
 function addPulseEffect(x, y, w, h, color) {
@@ -740,6 +741,9 @@ function setup() {
         { currentEmotion: currentEmotion }
       );
       console.log("WebcamPanel created successfully");
+      
+      // CRITICAL: Make webcamPanel available in global window scope
+      window.webcamPanel = webcamPanel;
     }
   } catch (e) {
     console.error("Error creating WebcamPanel:", e);
@@ -1173,50 +1177,66 @@ function draw() {
     updateDemoScene();
   } 
   // Check if webcam is actively controlling state
-  else if (webcamControlsState && webcamPanel && webcamPanel.bioSignalData) {
+  else if (webcamControlsState && webcamPanel) {
     // Get the current time
     let currentTime = millis();
     
-    // Check if it's time for a webcam state update (once per second)
+    // Check if it's time for a webcam state update (twice per second now)
     if (currentTime - lastWebcamUpdate > WEBCAM_UPDATE_INTERVAL) {
       lastWebcamUpdate = currentTime;
       
-      // Update global state from webcamPanel data if it exists
-      if (webcamPanel.bioSignalData.emotion) {
-        // Only update if the emotion has changed
-        if (currentEmotion !== webcamPanel.bioSignalData.emotion) {
-          let previousEmotion = currentEmotion;
-          currentEmotion = webcamPanel.bioSignalData.emotion;
+      // CRITICAL WEBCAM EMOTION SYNCHRONIZATION
+      // This section ensures the emotion bar always updates in webcam mode
+      
+      // First check if we have any emotion data from the webcam
+      let webcamEmotion = null;
+      if (webcamPanel.bioSignalData && webcamPanel.bioSignalData.emotion) {
+        webcamEmotion = webcamPanel.bioSignalData.emotion;
+        
+        // Force the global emotion to match webcam detection
+        if (currentEmotion !== webcamEmotion) {
+          console.log(`SYNC: Updating emotion from ${currentEmotion} to webcam emotion ${webcamEmotion}`);
+          currentEmotion = webcamEmotion;
+          emotionIntensity = 0.7; // Set moderate intensity
           
-          // Reset emotion intensity to a strong value on emotion change
-          emotionIntensity = 0.8;
-          
-          // Log the change
-          console.log("Webcam updated emotion:", currentEmotion);
-          
-          // Update cognitive metrics based on the new emotion
-          updateCognitiveMetricsForEmotion(currentEmotion);
-          
-          // Add pulse effect to state panel to highlight change
+          // Pulse effect for visual feedback
           addPulseEffect(stateX, stateY, stateW, stateH, accentColor1);
+        } else {
+          // Even if same emotion, keep intensity high
+          emotionIntensity = Math.max(emotionIntensity, 0.7);
+        }
+      } else {
+        // If no webcam emotion data yet, log it
+        console.log("No webcam emotion data available yet");
+      }
+      
+      // ALWAYS update metrics if available - this part works correctly
+      if (webcamPanel.bioSignalData) {
+        // Update engagement
+        if (webcamPanel.bioSignalData.engagement !== undefined) {
+          engagementScore = webcamPanel.bioSignalData.engagement;
+          engagementScore = constrain(engagementScore, 0, 1);
+        }
+        
+        // Update attention
+        if (webcamPanel.bioSignalData.attention !== undefined) {
+          attentionScore = webcamPanel.bioSignalData.attention;
+          attentionScore = constrain(attentionScore, 0, 1);
+        }
+        
+        // Update cognitive load
+        if (webcamPanel.bioSignalData.cognitiveLoad !== undefined) {
+          cognitiveLoad = webcamPanel.bioSignalData.cognitiveLoad;
+          cognitiveLoad = constrain(cognitiveLoad, 0, 1);
         }
       }
       
-      // Update other metrics if available
-      if (webcamPanel.bioSignalData.engagement !== undefined) {
-        engagementScore = webcamPanel.bioSignalData.engagement;
-      }
-      
-      if (webcamPanel.bioSignalData.attention !== undefined) {
-        attentionScore = webcamPanel.bioSignalData.attention;
-      }
-      
-      if (webcamPanel.bioSignalData.cognitiveLoad !== undefined) {
-        cognitiveLoad = webcamPanel.bioSignalData.cognitiveLoad;
-      }
+      // Update EEG wave parameters to match the current emotional state
+      updateEEGWavesForEmotion(currentEmotion);
     }
     
-    // In webcam mode, add subtle random variations to the EEG signals
+    // In webcam mode, add subtle random variations to the EEG signals only
+    // - NOT to the emotion intensity which should stay stable based on detected emotion
     alphaAmplitude += (sin(frameCount * 0.01) * 0.003) + (random(-0.002, 0.002));
     betaAmplitude += (sin(frameCount * 0.02) * 0.003) + (random(-0.002, 0.002));
     thetaAmplitude += (sin(frameCount * 0.015) * 0.002) + (random(-0.001, 0.001));
@@ -1228,13 +1248,15 @@ function draw() {
     thetaAmplitude = constrain(thetaAmplitude, 0.1, 0.8);
     deltaAmplitude = constrain(deltaAmplitude, 0.1, 0.8);
     
-    // Slightly vary emotion intensity for more dynamic display
-    emotionIntensity += (sin(frameCount * 0.01) * 0.005);
+    // REMOVE this line that was causing continuous fluctuations in emotion intensity
+    // emotionIntensity = emotionIntensity * 0.999 + (sin(frameCount * 0.01) * 0.003);
+    // Instead, let the emotion intensity decay very slowly for stability
+    emotionIntensity = emotionIntensity * 0.99995;
     emotionIntensity = constrain(emotionIntensity, 0.5, 1.0);
   } 
   // Default non-webcam, non-demo mode
   else {
-    // In this mode, add subtle random variations to the signals
+    // In this mode, add subtle random variations to the EEG signals only
     alphaAmplitude += (sin(frameCount * 0.01) * 0.003) + (random(-0.002, 0.002));
     betaAmplitude += (sin(frameCount * 0.02) * 0.003) + (random(-0.002, 0.002));
     thetaAmplitude += (sin(frameCount * 0.015) * 0.002) + (random(-0.001, 0.001));
@@ -1246,8 +1268,10 @@ function draw() {
     thetaAmplitude = constrain(thetaAmplitude, 0.1, 0.8);
     deltaAmplitude = constrain(deltaAmplitude, 0.1, 0.8);
     
-    // Slightly vary emotion intensity for more dynamic display
-    emotionIntensity += (sin(frameCount * 0.01) * 0.005);
+    // REMOVE this line that was causing continuous fluctuations in emotion intensity
+    // emotionIntensity += (sin(frameCount * 0.01) * 0.005);
+    // Instead, let the emotion intensity decay very slowly
+    emotionIntensity = emotionIntensity * 0.99995;
     emotionIntensity = constrain(emotionIntensity, 0.5, 1.0);
   }
   
@@ -1258,9 +1282,27 @@ function draw() {
       webcamPanel.bioSignalData = {};
     }
     
-    // In non-webcam control mode, we want to set the webcam panel's emotion 
-    // from the global state (reverse direction)
-    if (!webcamControlsState) {
+    // CRITICAL FIX: Handle emotion data differently based on mode
+    if (webcamControlsState === true) {
+      // In webcam control mode, always ensure global state matches panel data
+      // This is another sync path that ensures consistency
+      
+      // Check if we have valid emotion data from webcam
+      if (webcamPanel.bioSignalData && webcamPanel.bioSignalData.emotion) {
+        // If emotion data exists, ensure global state matches
+        if (currentEmotion !== webcamPanel.bioSignalData.emotion) {
+          // Force sync on every frame if emotions don't match
+          let prevEmotion = currentEmotion;
+          currentEmotion = webcamPanel.bioSignalData.emotion;
+          console.log(`🔄 FORCED SYNC: Updated global emotion from ${prevEmotion} to ${currentEmotion}`);
+          
+          // Also update the intensity for visibility
+          emotionIntensity = 0.7;
+        }
+      }
+    } 
+    // In non-webcam control mode, set the webcam panel's emotion from global state
+    else {
       webcamPanel.bioSignalData.currentEmotion = currentEmotion;
       webcamPanel.bioSignalData.emotion = currentEmotion; // Make sure both properties are set
     }
@@ -1288,6 +1330,17 @@ function draw() {
   // Draw pulse effects
   updatePulseEffects();
   drawPulseEffects();
+  
+  // Update webcam update interval
+  if (webcamControlsState && webcamPanel) {
+    // Force webcam panel to be properly initialized
+    window.webcamPanel = webcamPanel;
+    
+    // Log state every 5 seconds
+    if (frameCount % 300 === 0) {
+      console.log(`🎥 Webcam is controlling state, interval: ${WEBCAM_UPDATE_INTERVAL}ms`);
+    }
+  }
 }
 
 function drawPanel(x, y, w, h, title) {
@@ -1398,73 +1451,108 @@ function drawStatePanel(x, y, w, h) {
   const emotionAreaWidth = w * 0.2; 
   
   // Calculate gauge size and reduce by 3%
-  const gaugeSize = min(h - titleHeight - padding * 2, (gaugeAreaWidth / 3) - padding) * 1.15 * 0.97; // Apply 3% reduction
+  const gaugeSize = min(h - titleHeight - padding * 2, (gaugeAreaWidth / 3) - padding) * 1.15 * 0.97;
   
   // Adjusted spacing to account for smaller gauges
   const gaugeSpacing = (gaugeAreaWidth - (gaugeSize * 3)) / 4;
   
-  // Calculate vertical position (centered in available space)
+  // Calculate vertical position for gauges
   const gaugeY = titleHeight + (h - titleHeight) / 2;
   
-  // Calculate horizontal positions for three gauges with even spacing
-  const gauge1X = gaugeSpacing + gaugeSize / 2;
-  const gauge2X = gaugeSpacing * 2 + gaugeSize * 1.5;
-  const gauge3X = gaugeSpacing * 3 + gaugeSize * 2.5;
+  // Draw gauges
+  drawGauge(
+    gaugeSpacing + gaugeSize/2, 
+    gaugeY, 
+    gaugeSize, 
+    "Engagement", 
+    engagementScore, 
+    color(75, 207, 250)  // Bright blue
+  );
   
-  // Calculate attention and cognitive load based on engagement and emotion
-  let attentionScore = 0;
-  if (currentEmotion === "happy") {
-    attentionScore = min(1.0, engagementScore + 0.1);
-  } else if (currentEmotion === "confused") {
-    attentionScore = max(0.3, engagementScore - 0.1);
-  } else if (currentEmotion === "frustrated") {
-    attentionScore = max(0.2, engagementScore - 0.2);
-  } else {
-    attentionScore = engagementScore;
-  }
+  drawGauge(
+    gaugeSpacing * 2 + gaugeSize * 1.5, 
+    gaugeY, 
+    gaugeSize, 
+    "Attention", 
+    attentionScore, 
+    color(255, 223, 0)   // Yellow
+  );
   
-  let cognitiveLoad = 0;
-  if (currentEmotion === "confused") {
-    cognitiveLoad = 0.8;
-  } else if (currentEmotion === "frustrated") {
-    cognitiveLoad = 0.9;
-  } else if (currentEmotion === "happy") {
-    cognitiveLoad = 0.4;
-  } else {
-    cognitiveLoad = 0.5;
-  }
+  drawGauge(
+    gaugeSpacing * 3 + gaugeSize * 2.5, 
+    gaugeY, 
+    gaugeSize, 
+    "Cognitive Load", 
+    cognitiveLoad, 
+    color(255, 80, 100)  // Pink/Red
+  );
   
-  // Draw engagement gauge (leftmost)
-  drawGauge(gauge1X, gaugeY, gaugeSize, "Engagement", engagementScore, accentColor1);
+  // Calculate emotion bar position
+  const emotionBarX = gaugeAreaWidth + padding;
+  const emotionBarY = titleHeight + padding;
+  const emotionBarW = emotionAreaWidth - padding * 2;
+  const emotionBarH = h - titleHeight - padding * 2;
   
-  // Draw attention gauge (center)
-  drawGauge(gauge2X, gaugeY, gaugeSize, "Attention", attentionScore, color(100, 200, 255));
-  
-  // Draw cognitive load gauge (rightmost of the three)
-  drawGauge(gauge3X, gaugeY, gaugeSize, "Cognitive Load", cognitiveLoad, color(255, 150, 100));
-  
-  // Get color for current emotion
+  // Get emotion-specific color
   let emotionColor;
-  switch(currentEmotion) {
-    case "happy":
-      emotionColor = color(255, 223, 0); // Yellow
-      break;
-    case "confused":
-      emotionColor = color(255, 140, 0); // Orange
-      break;
-    case "frustrated":
-      emotionColor = color(255, 60, 60); // Red
-      break;
-    case "neutral":
-    default:
-      emotionColor = color(200, 200, 200); // Gray
+  
+  // Convert to lowercase for case insensitive comparison
+  const emotionLower = currentEmotion.toLowerCase();
+  
+  // Map emotions to our standard set of colors
+  if (emotionLower === 'happy' || emotionLower === 'joy') {
+    emotionColor = color(255, 223, 0);  // Yellow
+  } else if (emotionLower === 'confused' || emotionLower === 'surprise') {
+    emotionColor = color(180, 120, 255); // Purple
+  } else if (emotionLower === 'frustrated' || emotionLower === 'angry' || 
+             emotionLower === 'sad' || emotionLower === 'disgust' || 
+             emotionLower === 'fear') {
+    emotionColor = color(255, 60, 60);  // Red
+  } else {
+    emotionColor = color(200, 200, 200); // Light gray for neutral or unknown
   }
   
-  // Use global emotionIntensity rather than hardcoded values
-  // This ensures the emotion bar changes dynamically with the global state
+  // EXTENSIVE DIAGNOSTIC LOGGING FOR EMOTION BAR
+  // Debug logging for emotion bar updates every second to avoid console spam
+  if (frameCount % 60 === 0) {
+    // First log the key state variables
+    console.log(
+      `[STATE PANEL] Mode: ${webcamControlsState ? "WEBCAM" : (demoMode ? "DEMO" : "AUTO")}`,
+      `Emotion: ${currentEmotion}`,
+      `Intensity: ${emotionIntensity.toFixed(2)}`
+    );
+    
+    // If in webcam mode, log additional webcam-specific info
+    if (webcamControlsState) {
+      console.log(
+        `[WEBCAM STATE] Panel emotion: ${webcamPanel?.bioSignalData?.emotion || "none"}`,
+        `Panel currentEmotion: ${webcamPanel?.bioSignalData?.currentEmotion || "none"}`,
+        `Metrics:`, 
+        `Eng=${engagementScore.toFixed(2)}`,
+        `Att=${attentionScore.toFixed(2)}`,
+        `Cog=${cognitiveLoad.toFixed(2)}`
+      );
+    }
+    
+    // Log the color being applied to the emotion bar
+    console.log(
+      `[EMOTION BAR] Color:`, 
+      `R=${emotionColor.levels[0]}`,
+      `G=${emotionColor.levels[1]}`,
+      `B=${emotionColor.levels[2]}`
+    );
+  }
   
-  // Draw the emotion vertical bar graph
-  drawEmotionBar(gaugeAreaWidth, titleHeight, emotionAreaWidth, h - titleHeight, currentEmotion, emotionIntensity, emotionColor);
+  // Draw emotion bar
+  drawEmotionBar(
+    emotionBarX,
+    emotionBarY,
+    emotionBarW,
+    emotionBarH,
+    currentEmotion,
+    emotionIntensity,
+    emotionColor
+  );
   
   pop();
 }
@@ -1478,15 +1566,33 @@ function drawEmotionBar(x, y, w, h, emotion, intensity, color) {
   const padding = 10;
   
   // Make sure we're using a valid emotion
-  if (!emotion || typeof emotion !== 'string' || 
-      !['happy', 'neutral', 'confused', 'frustrated'].includes(emotion.toLowerCase())) {
+  if (!emotion || typeof emotion !== 'string') {
     emotion = 'neutral';
+  } else {
+    // Convert standard emotions to our four base emotions
+    emotion = emotion.toLowerCase();
+    if (emotion === 'sad' || emotion === 'angry' || emotion === 'disgust' || emotion === 'fear') {
+      emotion = 'frustrated'; // Map negative emotions to frustrated
+    } else if (emotion === 'surprise') {
+      emotion = 'confused'; // Map surprise to confused
+    } else if (emotion === 'joy') {
+      emotion = 'happy'; // Map joy to happy
+    } else if (!['happy', 'neutral', 'confused', 'frustrated'].includes(emotion)) {
+      // Default to neutral for any unrecognized emotion
+      emotion = 'neutral';
+    }
   }
   
   // Ensure intensity is within range
-  intensity = constrain(intensity, 0, 1);
+  intensity = constrain(intensity, 0.2, 1.0);
   
-  // Calculate bar dimensions - make the bar wider by ~3%
+  // CRITICAL FIX: In webcam mode, ensure high intensity for clear visibility
+  if (webcamControlsState === true) {
+    // In webcam mode, apply a moderate boost to intensity for visibility
+    intensity = constrain(intensity, 0.5, 1.0);
+  }
+  
+  // Calculate bar dimensions
   const barWidth = w * 0.3 * 1.03; // Increased width by 3%
   const barMaxHeight = h - padding * 4;
   const barHeight = barMaxHeight * intensity;
@@ -1497,23 +1603,29 @@ function drawEmotionBar(x, y, w, h, emotion, intensity, color) {
   noStroke();
   rect(barX, padding, barWidth, barMaxHeight, 5);
   
-  // Draw filled part of bar
+  // Draw filled part of bar - always use the passed color parameter
   fill(color);
   rect(barX, padding + barMaxHeight - barHeight, barWidth, barHeight, 5);
   
-  // Draw emotion name at the top with ~10% larger font
+  // Add webcam indicator if in webcam mode with highlighted border
+  if (webcamControlsState === true) {
+    // We're removing the webcam indicator and pulsing border to keep the UI clean
+    // as requested by the user
+  }
+  
+  // Draw emotion name at the top with the same color
   fill(color);
   textAlign(CENTER, TOP);
-  textSize(16); // Increased from 15
-  text(emotion.toUpperCase(), w/2, padding * 0.5);
+  textSize(16);
+  text(emotion.toUpperCase(), w/2, padding * 1.5);
   
-  // Draw value in the middle of the bar with ~10% larger font
+  // Draw value in the middle of the bar
   fill(255);
   textAlign(CENTER, CENTER);
-  textSize(16); // Increased from 15
+  textSize(16);
   text(nf(intensity, 1, 2), w/2, padding + barMaxHeight/2);
   
-  // Draw "Emotion" label at the bottom with same style as gauge labels
+  // Draw "Emotion" label at the bottom
   textSize(12);
   fill(200);
   textAlign(CENTER, BOTTOM);
@@ -2397,10 +2509,17 @@ function handleSubmit() {
     if (data.message) {
       addChatMessage("AI Instructor", data.message);
       
-      // Trigger random state change after AI responds (if not in demo mode)
-      setTimeout(() => {
-        triggerRandomStateChange();
-      }, 1500); // Delay state change to make it feel responsive to the AI's message
+      // Only trigger random state change after AI responds if we're in 
+      // autonomous mode (not demo and not webcam control)
+      if (!demoMode && !webcamControlsState) {
+        // Add telemetry message about incoming response
+        addBackendMessage("Analyzing cognitive response to feedback...", "system");
+        
+        // Trigger random state change with delay to make it feel responsive to the AI's message
+        setTimeout(() => {
+          triggerRandomStateChange();
+        }, 1500);
+      }
     } else if (data.error) {
       addBackendMessage("Error: " + data.error, "error");
     }
@@ -3094,41 +3213,50 @@ function testTimestamp() {
 // Function to trigger random state changes in non-demo mode
 function triggerRandomStateChange() {
   // Skip in demo mode or when webcam is controlling state
-  if (demoMode || webcamControlsState) return; 
+  if (demoMode || webcamControlsState === true) {
+    if (webcamControlsState === true) {
+      console.log("⏩ Skipping random state change - webcam is controlling state");
+    }
+    return;
+  }
   
   // Get current emotion
   let previousEmotion = currentEmotion;
   
   // Define transition probabilities based on current emotion
+  // New probability distribution as requested:
+  // - Happy and confused should have higher probability
+  // - Frustrated should be second lowest
+  // - Neutral should be lowest
   let transitionProbabilities = {};
   
   if (currentEmotion === "neutral") {
     transitionProbabilities = {
-      "happy": 0.4,
-      "confused": 0.3,
-      "frustrated": 0.1,
-      "neutral": 0.2  // chance to stay the same
+      "happy": 0.5,      // Increased from 0.4
+      "confused": 0.3,   // Same
+      "frustrated": 0.15, // Increased from 0.1
+      "neutral": 0.05    // Reduced from 0.2 (lowest)
     };
   } else if (currentEmotion === "happy") {
     transitionProbabilities = {
-      "neutral": 0.5,
-      "confused": 0.2,
-      "frustrated": 0.1,
-      "happy": 0.2  // chance to stay the same
+      "neutral": 0.15,    // Reduced from 0.5 (now lowest)
+      "confused": 0.5,    // Increased from 0.2 (now highest)
+      "frustrated": 0.25, // Increased from 0.1 (now second highest)
+      "happy": 0.1        // Reduced from 0.2 (second lowest)
     };
   } else if (currentEmotion === "confused") {
     transitionProbabilities = {
-      "neutral": 0.3,
-      "happy": 0.2,
-      "frustrated": 0.3,
-      "confused": 0.2  // chance to stay the same
+      "neutral": 0.1,     // Reduced from 0.3 (now lowest)
+      "happy": 0.45,      // Increased from 0.2 (now highest)
+      "frustrated": 0.25, // Reduced from 0.3 (now middle)
+      "confused": 0.2     // Same
     };
   } else if (currentEmotion === "frustrated") {
     transitionProbabilities = {
-      "neutral": 0.4,
-      "confused": 0.3,
-      "happy": 0.1,
-      "frustrated": 0.2  // chance to stay the same
+      "neutral": 0.15,    // Reduced from 0.4 (now lowest)
+      "confused": 0.4,    // Increased from 0.3 (now highest)
+      "happy": 0.3,       // Increased from 0.1 (now second highest)
+      "frustrated": 0.15  // Reduced from 0.2 (now tied for lowest)
     };
   }
   
