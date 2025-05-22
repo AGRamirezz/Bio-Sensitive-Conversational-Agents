@@ -771,6 +771,9 @@ function setup() {
       webcamPanel.destroy();
     }
   });
+  
+  // Track session start time for biometric context
+  window.sessionStartTime = Date.now();
 }
 
 // Toggle demo mode
@@ -2463,6 +2466,59 @@ function addChatMessage(sender, text) {
   }
 }
 
+/**
+ * Captures a snapshot of the current biometric state
+ * This function collects the most recent biometric data from various sources
+ * and returns a structured object with the user's cognitive and emotional state.
+ * @returns {Object} Biometric snapshot with emotion and cognitive metrics
+ */
+function captureBiometricSnapshot() {
+  // Start with basic cognitive state information
+  const snapshot = {
+    // Core emotion data
+    emotion: {
+      name: currentEmotion || "neutral",
+      intensity: emotionIntensity || 0.5,
+      // Add the timestamp to track when this emotion was detected
+      detected_at: Date.now()
+    },
+    
+    // Cognitive metrics
+    metrics: {
+      engagement: engagementScore || 0.5,
+      attention: attentionScore || 0.5,
+      cognitive_load: cognitiveLoad || 0.5
+    },
+    
+    // Metadata about the snapshot
+    metadata: {
+      timestamp: Date.now(),
+      source: webcamControlsState ? "webcam" : (demoMode ? "demo" : "simulation"),
+      session_duration: (Date.now() - sessionStartTime) / 1000 // seconds
+    }
+  };
+  
+  // If webcam data is available, include more detailed information
+  if (webcamControlsState && webcamPanel && webcamPanel.lastEmotionData) {
+    const emotionData = webcamPanel.lastEmotionData;
+    
+    // Include webcam-specific data if available
+    snapshot.webcam = {
+      faces_detected: emotionData.faces_detected || 0,
+      confidence: emotionData.emotions ? 
+                 (emotionData.emotions[snapshot.emotion.name] || 0) : 0,
+      all_emotions: emotionData.emotions || {}
+    };
+  }
+  
+  // Log the snapshot
+  console.log("📸 Captured biometric snapshot:", snapshot);
+  addBackendMessage("Biometric snapshot captured for message", "system");
+  
+  return snapshot;
+}
+
+// Update the handleSubmit function to use the biometric snapshot
 function handleSubmit() {
   let userMessage = inputElement.value().trim();
   if (userMessage === '' || isWaitingForResponse) return;
@@ -2471,14 +2527,8 @@ function handleSubmit() {
   addChatMessage("User", userMessage);
   inputElement.value('');
   
-  // Create cognitive state object with bio-signals
-  const cognitiveState = {
-    emotion: currentEmotion || "neutral",
-    emotionIntensity: emotionIntensity || 0.5,
-    engagement: engagementScore || 0.5,
-    attention: attentionScore || 0.5,  // Changed from attentionScore to attention
-    cognitiveLoad: cognitiveLoad || 0.5
-  };
+  // Capture biometric snapshot at the moment of submission
+  const biometricSnapshot = captureBiometricSnapshot();
   
   // Add telemetry message
   addBackendMessage("Sending request to LLM...", "system");
@@ -2494,7 +2544,14 @@ function handleSubmit() {
     },
     body: JSON.stringify({
       message: userMessage,
-      cognitive_state: cognitiveState
+      cognitive_state: {
+        emotion: biometricSnapshot.emotion.name,
+        emotionIntensity: biometricSnapshot.emotion.intensity,
+        engagement: biometricSnapshot.metrics.engagement,
+        attention: biometricSnapshot.metrics.attention,
+        cognitiveLoad: biometricSnapshot.metrics.cognitive_load
+      },
+      biometric_snapshot: biometricSnapshot // Include the full snapshot
     })
   })
   .then(response => {

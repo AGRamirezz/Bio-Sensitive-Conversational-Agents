@@ -4,6 +4,7 @@ import time
 import os
 import requests
 import logging
+import json
 
 app = Flask(__name__)
 CORS(app)
@@ -12,6 +13,27 @@ logging.basicConfig(level=logging.INFO)
 # Define model directory
 model_dir = os.path.join(os.path.expanduser("~"), ".cache", "gpt4all")
 os.makedirs(model_dir, exist_ok=True)
+
+# Define the instructor prompt template
+INSTRUCTOR_PROMPT = """
+You are an AI technical instructor helping professionals learn new skills.
+Your approach is:
+- Clear, concise explanations with practical examples
+- Patient, encouraging tone
+- Breaking complex topics into manageable parts
+
+When the learner seems:
+- Confused or frustrated: Simplify explanations and offer encouragement
+- Engaged and focused: Maintain current complexity and positive reinforcement
+- Showing high cognitive load: Slow down, simplify, and check understanding
+
+Always respond in a supportive, educational manner.
+"""
+
+# Set default LLM parameters based on best practices for instruction
+DEFAULT_TEMPERATURE = 0.5  # Reduced from 0.7 to make responses more focused and deterministic
+DEFAULT_TOP_P = 0.85       # Reduced from 0.9 to narrow token selection and reduce tangential responses
+DEFAULT_MAX_TOKENS = 325   # Adjusted to discourage overly long responses that might drift into self-talk
 
 # Direct download a model
 def download_model_direct():
@@ -74,6 +96,103 @@ except Exception as e:
 # Store conversation history
 conversation_history = []
 
+# Store last request timestamp for rate limiting
+last_request_time = 0
+
+# Store last AI response timestamp for conversation context
+last_ai_response_time = 0
+
+# Process biometric snapshot to generate LLM context
+def process_biometric_snapshot(snapshot):
+    """
+    Process a biometric snapshot into a structured context string for the LLM.
+    This function analyzes the snapshot data and creates a description of the
+    user's current cognitive and emotional state.
+    
+    Args:
+        snapshot: The biometric snapshot object from the frontend
+        
+    Returns:
+        str: A formatted string describing the user's state
+    """
+    if not snapshot or not isinstance(snapshot, dict):
+        return ""
+    
+    try:
+        # Extract core information
+        emotion = snapshot.get('emotion', {}).get('name', 'neutral')
+        emotion_intensity = snapshot.get('emotion', {}).get('intensity', 0.5)
+        engagement = snapshot.get('metrics', {}).get('engagement', 0.5)
+        attention = snapshot.get('metrics', {}).get('attention', 0.5)
+        cognitive_load = snapshot.get('metrics', {}).get('cognitive_load', 0.5)
+        source = snapshot.get('metadata', {}).get('source', 'unknown')
+        
+        # Determine confidence if available
+        confidence = None
+        if 'webcam' in snapshot and source == 'webcam':
+            confidence = snapshot['webcam'].get('confidence', None)
+        
+        # Classify each metric as low, medium, or high
+        def classify_level(value):
+            if value < 0.35:
+                return "low"
+            elif value < 0.7:
+                return "moderate"
+            else:
+                return "high"
+        
+        # Analyze user's state
+        engagement_level = classify_level(engagement)
+        attention_level = classify_level(attention)
+        cognitive_load_level = classify_level(cognitive_load)
+        emotion_level = "mild" if emotion_intensity < 0.4 else ("moderate" if emotion_intensity < 0.7 else "strong")
+        
+        # Build context description with clearer guidance
+        context_parts = []
+        
+        # Add emotion context with clear action directive
+        if confidence is not None:
+            confidence_desc = f"{int(confidence * 100)}% confidence" if confidence <= 1.0 else f"{int(confidence)}% confidence"
+            context_parts.append(f"The learner appears {emotion} (with {confidence_desc}) with {emotion_level} intensity.")
+        else:
+            context_parts.append(f"The learner appears {emotion} with {emotion_level} intensity.")
+        
+        # Add cognitive metrics context
+        context_parts.append(f"They show {engagement_level} engagement, {attention_level} attention, and {cognitive_load_level} cognitive load.")
+        
+        # Add specific directives based on state
+        if cognitive_load_level == "high":
+            context_parts.append("ACTION NEEDED: Acknowledge their cognitive load explicitly. Use simpler explanations with concrete examples. Break complex ideas into smaller steps.")
+        
+        if attention_level == "low":
+            context_parts.append("ACTION NEEDED: Acknowledge their current attention state directly. Use more engaging examples and shorter explanations to recapture interest.")
+        
+        if emotion in ["confused", "frustrated", "angry"]:
+            context_parts.append(f"ACTION NEEDED: Directly acknowledge that they seem {emotion}. Offer reassurance that this topic can be challenging, then provide a clearer explanation.")
+        
+        if emotion == "sad":
+            context_parts.append("ACTION NEEDED: Acknowledge their emotional state with empathy. Use encouraging language and emphasize that making progress takes time.")
+        
+        if emotion == "fear":
+            context_parts.append("ACTION NEEDED: Acknowledge their apprehension directly. Provide reassurance and break down complex topics into more manageable pieces.")
+        
+        if emotion == "happy" and engagement_level == "high":
+            context_parts.append("ACTION NEEDED: Acknowledge their positive state and high engagement. Build on their momentum with slightly more advanced content.")
+        
+        if emotion == "neutral":
+            # For neutral emotion, focus on cognitive metrics instead
+            if engagement_level == "low":
+                context_parts.append("ACTION NEEDED: While they appear neutral, their engagement is low. Try to spark interest with a relevant example or application.")
+            elif cognitive_load_level == "high":
+                context_parts.append("ACTION NEEDED: While they appear neutral, their cognitive load is high. Acknowledge this and simplify your explanation.")
+        
+        # Combine all parts
+        return "\n".join(context_parts)
+        
+    except Exception as e:
+        logging.error(f"Error processing biometric snapshot: {str(e)}")
+        return "Learner's biometric data available but could not be processed."
+
 @app.route('/api/status', methods=['GET'])
 def status():
     """Endpoint to check if the model is loaded and ready"""
@@ -85,6 +204,8 @@ def status():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    global last_request_time, conversation_history, last_ai_response_time
+    
     # Check if model is loaded
     if model is None:
         return jsonify({
@@ -92,34 +213,147 @@ def chat():
             'timestamp': time.time()
         }), 503  # Service Unavailable
     
+    # Rate limiting check (2 second minimum between requests)
+    current_time = time.time()
+    time_since_last_request = current_time - last_request_time
+    if time_since_last_request < 2.0:
+        wait_time = 2.0 - time_since_last_request
+        logging.info(f"Rate limiting: Request too soon. Wait {wait_time:.2f} seconds.")
+        return jsonify({
+            'error': f'Please wait a moment before sending another message.',
+            'timestamp': current_time,
+            'retry_after': wait_time
+        }), 429  # Too Many Requests
+    
+    # Update last request time
+    last_request_time = current_time
+    
+    # Calculate time since last AI response (for conversation flow context)
+    time_since_last_ai_response = current_time - last_ai_response_time if last_ai_response_time > 0 else 0
+    
     data = request.json
     user_message = data.get('message', '')
     cognitive_state = data.get('cognitive_state', {})
+    biometric_snapshot = data.get('biometric_snapshot', None)
+    
+    # Log received data for debugging (excluding large fields)
+    log_data = {
+        'message': user_message,
+        'cognitive_state': cognitive_state,
+        'has_biometric_snapshot': biometric_snapshot is not None
+    }
+    logging.info(f"Received chat request: {json.dumps(log_data)}")
     
     # Add user message to history
     conversation_history.append(f"User: {user_message}")
     
     # Adjust LLM parameters based on bio-signals
-    temperature = 0.7  # Default
-    top_p = 0.95       # Default
+    temperature = DEFAULT_TEMPERATURE
+    top_p = DEFAULT_TOP_P
+    max_tokens = DEFAULT_MAX_TOKENS
     
     # Example conditionings based on emotional state
     if cognitive_state.get('emotion') == 'frustrated':
         # More focused responses for frustrated users
-        temperature = 0.5
-        top_p = 0.85
+        temperature = 0.45  # Further reduced for more focused responses
+        top_p = 0.8
     elif cognitive_state.get('emotion') == 'happy':
         # More creative responses for happy users
-        temperature = 0.8
-        top_p = 0.98
+        temperature = 0.55  # Reduced from 0.8 but still higher than default
+        top_p = 0.9
     
     # Adjust based on engagement
     engagement = cognitive_state.get('engagement', 0.5)
-    max_tokens = int(256 * (0.5 + engagement/2))  # 128-256 tokens
+    # Scale tokens between 275-325 based on engagement (narrower range to reduce self-talk)
+    max_tokens = int(275 + (engagement * 50))
     
-    # Format conversation for context
-    prompt = "\n".join(conversation_history[-5:])  # Last 5 messages
-    prompt += "\nAI Instructor: "
+    # Process biometric data for context
+    biometric_context = ""
+    emotion = "neutral"  # Default emotion
+    emotion_intensity = 0.5  # Default intensity
+    cognitive_load_level = "moderate"  # Default cognitive load
+    
+    if biometric_snapshot:
+        biometric_context = process_biometric_snapshot(biometric_snapshot)
+        logging.info(f"Generated biometric context: {biometric_context}")
+        
+        # Extract emotion and intensity for response framing
+        emotion = biometric_snapshot.get('emotion', {}).get('name', 'neutral')
+        emotion_intensity = biometric_snapshot.get('emotion', {}).get('intensity', 0.5)
+        
+        # Get cognitive load level for response framing
+        cognitive_load = biometric_snapshot.get('metrics', {}).get('cognitive_load', 0.5)
+        if cognitive_load < 0.35:
+            cognitive_load_level = "low"
+        elif cognitive_load < 0.7:
+            cognitive_load_level = "moderate"
+        else:
+            cognitive_load_level = "high"
+            
+    elif cognitive_state:
+        # Fallback to simple cognitive state if no snapshot
+        emotion = cognitive_state.get('emotion', 'neutral')
+        engagement_level = cognitive_state.get('engagement', 0.5)
+        attention_level = cognitive_state.get('attention', 0.5)
+        cognitive_load = cognitive_state.get('cognitiveLoad', 0.5)
+        
+        biometric_context = f"The learner currently appears {emotion} with engagement level {engagement_level:.2f}, attention level {attention_level:.2f}, and cognitive load {cognitive_load:.2f}."
+    
+    # Format conversation for context with instructor prompt
+    recent_history = "\n".join(conversation_history[-5:])  # Last 5 messages
+    
+    # Add conversation flow context if available
+    conversation_flow_context = ""
+    if time_since_last_ai_response > 0:
+        # Add note about how long the user took to respond
+        if time_since_last_ai_response < 5:
+            conversation_flow_context = "The learner responded very quickly."
+        elif time_since_last_ai_response < 15:
+            conversation_flow_context = "The learner took a brief moment to respond."
+        elif time_since_last_ai_response < 60:
+            conversation_flow_context = "The learner took some time to consider before responding."
+        else:
+            conversation_flow_context = f"The learner took {int(time_since_last_ai_response)} seconds before responding."
+    
+    # Combine all context elements
+    prompt = f"{INSTRUCTOR_PROMPT}\n\n"
+    
+    if biometric_context:
+        # Add Response Framing section for more explicit guidance
+        response_framing = f"""
+RESPONSE FRAMING:
+Begin your response by explicitly acknowledging the learner's current state.
+For example:
+- "I notice you seem {emotion} with this topic..."
+- "I can see this material might be {cognitive_load_level == 'high' and 'challenging' or 'manageable'} for you right now..."
+- "Your engagement level suggests..."
+
+This acknowledgment should feel natural and supportive, not clinical. After acknowledging their state,
+continue with your explanation at an appropriate level of detail.
+"""
+        prompt += f"Learner's Current State:\n{biometric_context}\n\n{response_framing}\n\n"
+        
+        # Add emphasis for strong emotional states
+        if emotion != 'neutral' or emotion_intensity > 0.7:
+            prompt += f"IMPORTANT: Make sure to acknowledge the learner's {emotion} state prominently in your first sentence.\n\n"
+    
+    if conversation_flow_context:
+        prompt += f"{conversation_flow_context}\n"
+    
+    prompt += f"Recent conversation:\n{recent_history}\n"
+    
+    # Add explicit instruction to prevent self-talk
+    prompt += """
+IMPORTANT: Focus only on responding directly to the user's most recent message. 
+Do not continue the conversation with yourself or generate follow-up questions and answers.
+Your response should be a single, coherent answer addressing what the user just asked.
+
+"""
+    
+    # Clear separator for the actual response
+    prompt += "AI Instructor: "
+    
+    logging.info(f"Generating response with temp={temperature}, top_p={top_p}, max_tokens={max_tokens}")
     
     try:
         # Generate response with GPT4All
@@ -129,6 +363,9 @@ def chat():
             temp=temperature,
             top_p=top_p
         )
+        
+        # Update last AI response time
+        last_ai_response_time = time.time()
         
         # Add AI response to history
         conversation_history.append(f"AI Instructor: {ai_response}")
@@ -153,8 +390,9 @@ def chat():
 
 @app.route('/api/reset', methods=['POST'])
 def reset_conversation():
-    global conversation_history
+    global conversation_history, last_ai_response_time
     conversation_history = []
+    last_ai_response_time = 0
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
