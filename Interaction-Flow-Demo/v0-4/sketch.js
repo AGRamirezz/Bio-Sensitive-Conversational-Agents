@@ -74,6 +74,15 @@ let webcamControlsState = false; // Flag to indicate if webcam is controlling th
 let lastWebcamUpdate = 0; // Timestamp of last webcam update
 const WEBCAM_UPDATE_INTERVAL = 500; // Update from webcam twice per second (was 1000)
 
+// Global variables for emotion tracking
+let emotionBuffer = []; // Buffer to store emotion data over time
+const EMOTION_WINDOW_SIZE = 5000; // 5 seconds in milliseconds
+const RECENCY_WEIGHT = 0.05; // 5% weight for recency
+
+// Global biometric variables that are accessible via window object
+window.currentEmotion = "neutral"; // neutral, happy, confused, frustrated
+window.emotionIntensity = 0.5; // How strongly the current emotion is felt (0.0-1.0)
+
 // Function to add pulse effect
 function addPulseEffect(x, y, w, h, color) {
   pulseEffects.push({
@@ -774,6 +783,11 @@ function setup() {
   
   // Track session start time for biometric context
   window.sessionStartTime = Date.now();
+  
+  // Initialize demo state
+  frameCount = 0;
+  window.currentEmotion = "neutral";
+  window.emotionIntensity = 0.5;
 }
 
 // Toggle demo mode
@@ -2438,8 +2452,9 @@ function addChatMessage(sender, text) {
   }
   
   // Auto-scroll to bottom (latest messages)
-  // Only auto-scroll if already at or near the bottom
-  if (chatScrollY < 50) {
+  // Only auto-scroll if user is very close to the bottom (within 10 pixels)
+  // This allows users to scroll up and read earlier messages without interference
+  if (chatScrollY <= 10) {
     chatScrollY = 0;
   }
   
@@ -2473,17 +2488,24 @@ function addChatMessage(sender, text) {
  * @returns {Object} Biometric snapshot with emotion and cognitive metrics
  */
 function captureBiometricSnapshot() {
-  // Start with basic cognitive state information
+  // Use time window logic to determine the best emotion
+  const windowResults = selectWinningEmotion();
+  
+  // Start with emotion data from the time window analysis
   const snapshot = {
-    // Core emotion data
+    // Core emotion data (now based on time window)
     emotion: {
-      name: currentEmotion || "neutral",
-      intensity: emotionIntensity || 0.5,
-      // Add the timestamp to track when this emotion was detected
-      detected_at: Date.now()
+      name: windowResults.emotion,
+      intensity: windowResults.confidence,
+      detected_at: Date.now(),
+      window_analysis: {
+        total_score: windowResults.totalScore,
+        all_emotions: windowResults.windowData,
+        buffer_size: emotionBuffer.length
+      }
     },
     
-    // Cognitive metrics
+    // Cognitive metrics (still use current state)
     metrics: {
       engagement: engagementScore || 0.5,
       attention: attentionScore || 0.5,
@@ -2494,7 +2516,8 @@ function captureBiometricSnapshot() {
     metadata: {
       timestamp: Date.now(),
       source: webcamControlsState ? "webcam" : (demoMode ? "demo" : "simulation"),
-      session_duration: (Date.now() - sessionStartTime) / 1000 // seconds
+      session_duration: (Date.now() - sessionStartTime) / 1000, // seconds
+      emotion_window_size: EMOTION_WINDOW_SIZE
     }
   };
   
@@ -2505,15 +2528,16 @@ function captureBiometricSnapshot() {
     // Include webcam-specific data if available
     snapshot.webcam = {
       faces_detected: emotionData.faces_detected || 0,
-      confidence: emotionData.emotions ? 
-                 (emotionData.emotions[snapshot.emotion.name] || 0) : 0,
+      current_confidence: emotionData.emotions ? 
+                         (emotionData.emotions[windowResults.emotion] || 0) : 0,
       all_emotions: emotionData.emotions || {}
     };
   }
   
-  // Log the snapshot
-  console.log("📸 Captured biometric snapshot:", snapshot);
-  addBackendMessage("Biometric snapshot captured for message", "system");
+  // Log the snapshot with time window information
+  console.log("📸 Captured time window-based biometric snapshot:", snapshot);
+  console.log("🔍 Emotion window analysis:", windowResults.windowData);
+  addBackendMessage(`Emotion snapshot: ${windowResults.emotion} (score: ${windowResults.totalScore.toFixed(2)}, buffer: ${emotionBuffer.length} entries)`, "system");
   
   return snapshot;
 }
@@ -2528,10 +2552,25 @@ function handleSubmit() {
   inputElement.value('');
   
   // Capture biometric snapshot at the moment of submission
+  console.log("🔍 SUBMIT: About to capture biometric snapshot...");
+  console.log("🔍 SUBMIT: Global variables before capture:");
+  console.log(`   window.currentEmotion = ${window.currentEmotion}`);
+  console.log(`   window.emotionIntensity = ${window.emotionIntensity}`);
+  
   const biometricSnapshot = captureBiometricSnapshot();
   
+  console.log("🔍 SUBMIT: Captured biometric snapshot:", biometricSnapshot);
+  console.log("🔍 SUBMIT: Emotion from snapshot:", biometricSnapshot.emotion);
+  console.log("🔍 SUBMIT: Cognitive state for LLM:", {
+    emotion: biometricSnapshot.emotion.name,
+    emotionIntensity: biometricSnapshot.emotion.intensity,
+    engagement: biometricSnapshot.metrics.engagement,
+    attention: biometricSnapshot.metrics.attention,
+    cognitiveLoad: biometricSnapshot.metrics.cognitive_load
+  });
+  
   // Add telemetry message
-  addBackendMessage("Sending request to LLM...", "system");
+  addBackendMessage(`Sending to LLM: emotion=${biometricSnapshot.emotion.name} (${biometricSnapshot.emotion.intensity.toFixed(2)})`, "system");
   
   // Show processing state
   isWaitingForResponse = true;
@@ -3333,6 +3372,10 @@ function triggerRandomStateChange() {
   // Only continue if the emotion actually changed
   if (newEmotion === previousEmotion) return;
   
+  // ADD TO EMOTION BUFFER for time window analysis
+  addEmotionToBuffer(newEmotion, 75); // Add with 75% confidence for simulation
+  console.log(`📊 SIMULATION: Added ${newEmotion} to emotion buffer`);
+  
   // Update the emotion
   currentEmotion = newEmotion;
   emotionIntensity = 0.9; // Set a high intensity for better visibility in the emotion bar
@@ -3440,3 +3483,117 @@ function mousePressed() {
   // If we get here, no panel handled the event
   return true; // Allow default behavior
 }
+
+/**
+ * Adds emotion data to the time window buffer
+ * This should be called whenever a new emotion is detected (webcam, demo, etc.)
+ */
+function addEmotionToBuffer(emotionName, confidence, timestamp = Date.now()) {
+  const normalizedConfidence = confidence / 100; // Normalize to 0-1 range
+  
+  // Apply higher threshold for neutral emotions to combat over-representation
+  if (emotionName.toLowerCase() === 'neutral' && normalizedConfidence < 0.9) {
+    console.log(`🚫 FILTERED: Neutral emotion blocked (confidence: ${normalizedConfidence.toFixed(2)} < 0.9 threshold)`);
+    return; // Don't add low-confidence neutral emotions to buffer
+  }
+  
+  emotionBuffer.push({
+    emotion: emotionName,
+    confidence: normalizedConfidence,
+    timestamp: timestamp
+  });
+  
+  console.log(`📊 ADDED to buffer: ${emotionName} (confidence: ${normalizedConfidence.toFixed(2)})`);
+  
+  // Clean old entries outside the window
+  cleanEmotionBuffer(timestamp);
+}
+
+/**
+ * Removes emotion entries older than the window size
+ */
+function cleanEmotionBuffer(currentTime = Date.now()) {
+  const cutoffTime = currentTime - EMOTION_WINDOW_SIZE;
+  emotionBuffer = emotionBuffer.filter(entry => entry.timestamp >= cutoffTime);
+}
+
+/**
+ * Calculates composite emotion scores using frequency and strength with recency weighting
+ */
+function calculateCompositeEmotionScores(currentTime = Date.now()) {
+  cleanEmotionBuffer(currentTime);
+  
+  if (emotionBuffer.length === 0) {
+    return { neutral: 1.0 }; // Default to neutral if no data
+  }
+  
+  const emotionScores = {};
+  const windowStart = currentTime - EMOTION_WINDOW_SIZE;
+  
+  // Calculate scores for each emotion
+  emotionBuffer.forEach(entry => {
+    const emotion = entry.emotion;
+    const confidence = entry.confidence;
+    
+    // Calculate recency factor (more recent = higher weight)
+    const age = currentTime - entry.timestamp;
+    const recencyFactor = 1 + (RECENCY_WEIGHT * (1 - age / EMOTION_WINDOW_SIZE));
+    
+    // Composite score = confidence * recency_factor
+    let score = confidence * recencyFactor;
+    
+    // Apply 10% penalty to neutral emotions to reduce their dominance
+    if (emotion.toLowerCase() === 'neutral') {
+      score *= 0.9; // 10% penalty
+      console.log(`⚖️ NEUTRAL PENALTY: Applied 10% penalty to ${emotion} score (${(score/0.9).toFixed(3)} → ${score.toFixed(3)})`);
+    }
+    
+    if (!emotionScores[emotion]) {
+      emotionScores[emotion] = 0;
+    }
+    emotionScores[emotion] += score;
+  });
+  
+  return emotionScores;
+}
+
+/**
+ * Selects the winning emotion based on composite scores
+ */
+function selectWinningEmotion() {
+  const emotionScores = calculateCompositeEmotionScores();
+  
+  // Log all emotion scores for debugging
+  console.log('🏆 EMOTION SCORES:', Object.entries(emotionScores)
+    .map(([emotion, score]) => `${emotion}: ${score.toFixed(3)}`)
+    .join(', '));
+  
+  // Find emotion with highest score
+  let winningEmotion = 'neutral';
+  let highestScore = 0;
+  
+  for (const [emotion, score] of Object.entries(emotionScores)) {
+    if (score > highestScore) {
+      highestScore = score;
+      winningEmotion = emotion;
+    }
+  }
+  
+  console.log(`🎯 WINNER: ${winningEmotion} with score ${highestScore.toFixed(3)}`);
+  
+  // Calculate average confidence for the winning emotion
+  const winningEmotionEntries = emotionBuffer.filter(entry => entry.emotion === winningEmotion);
+  const avgConfidence = winningEmotionEntries.length > 0 ?
+    winningEmotionEntries.reduce((sum, entry) => sum + entry.confidence, 0) / winningEmotionEntries.length :
+    0.5;
+  
+  return {
+    emotion: winningEmotion,
+    confidence: avgConfidence,
+    totalScore: highestScore,
+    windowData: emotionScores
+  };
+}
+
+// Make the function globally accessible for webcam integration
+window.addEmotionToBuffer = addEmotionToBuffer;

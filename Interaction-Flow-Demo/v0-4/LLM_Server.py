@@ -31,7 +31,7 @@ Always respond in a supportive, educational manner.
 """
 
 # Set default LLM parameters based on best practices for instruction
-DEFAULT_TEMPERATURE = 0.5  # Reduced from 0.7 to make responses more focused and deterministic
+DEFAULT_TEMPERATURE = 0.6  # Increased from 0.5 to allow more flexibility for emotional acknowledgment
 DEFAULT_TOP_P = 0.85       # Reduced from 0.9 to narrow token selection and reduce tangential responses
 DEFAULT_MAX_TOKENS = 325   # Adjusted to discourage overly long responses that might drift into self-talk
 
@@ -147,10 +147,10 @@ def process_biometric_snapshot(snapshot):
         cognitive_load_level = classify_level(cognitive_load)
         emotion_level = "mild" if emotion_intensity < 0.4 else ("moderate" if emotion_intensity < 0.7 else "strong")
         
-        # Build context description with clearer guidance
+        # Build context description with enhanced directives
         context_parts = []
         
-        # Add emotion context with clear action directive
+        # Add emotion context
         if confidence is not None:
             confidence_desc = f"{int(confidence * 100)}% confidence" if confidence <= 1.0 else f"{int(confidence)}% confidence"
             context_parts.append(f"The learner appears {emotion} (with {confidence_desc}) with {emotion_level} intensity.")
@@ -160,31 +160,31 @@ def process_biometric_snapshot(snapshot):
         # Add cognitive metrics context
         context_parts.append(f"They show {engagement_level} engagement, {attention_level} attention, and {cognitive_load_level} cognitive load.")
         
-        # Add specific directives based on state
+        # Add enhanced specific directives based on state
         if cognitive_load_level == "high":
-            context_parts.append("ACTION NEEDED: Acknowledge their cognitive load explicitly. Use simpler explanations with concrete examples. Break complex ideas into smaller steps.")
+            context_parts.append("REQUIRED: Begin your response by acknowledging their cognitive load. Say something like 'I can see this is mentally demanding right now...' then use simpler explanations with concrete examples.")
         
         if attention_level == "low":
-            context_parts.append("ACTION NEEDED: Acknowledge their current attention state directly. Use more engaging examples and shorter explanations to recapture interest.")
+            context_parts.append("REQUIRED: Begin your response by acknowledging their attention state. Say something like 'I notice your attention might be wandering...' then use more engaging examples and shorter explanations.")
         
         if emotion in ["confused", "frustrated", "angry"]:
-            context_parts.append(f"ACTION NEEDED: Directly acknowledge that they seem {emotion}. Offer reassurance that this topic can be challenging, then provide a clearer explanation.")
+            context_parts.append(f"REQUIRED: Begin your response by directly acknowledging that they seem {emotion}. Say something like 'I can see you're feeling {emotion} about this...' then offer reassurance that this topic can be challenging.")
         
         if emotion == "sad":
-            context_parts.append("ACTION NEEDED: Acknowledge their emotional state with empathy. Use encouraging language and emphasize that making progress takes time.")
+            context_parts.append("REQUIRED: Begin your response by acknowledging their emotional state with empathy. Say something like 'I notice you seem discouraged...' then use encouraging language and emphasize that making progress takes time.")
         
         if emotion == "fear":
-            context_parts.append("ACTION NEEDED: Acknowledge their apprehension directly. Provide reassurance and break down complex topics into more manageable pieces.")
+            context_parts.append("REQUIRED: Begin your response by acknowledging their apprehension. Say something like 'I can see you might be apprehensive about this...' then provide reassurance and break down concepts into manageable pieces.")
         
         if emotion == "happy" and engagement_level == "high":
-            context_parts.append("ACTION NEEDED: Acknowledge their positive state and high engagement. Build on their momentum with slightly more advanced content.")
+            context_parts.append("REQUIRED: Begin your response by acknowledging their positive state. Say something like 'I can see you're really engaged with this material...' then build on their momentum with slightly more advanced content.")
         
         if emotion == "neutral":
             # For neutral emotion, focus on cognitive metrics instead
             if engagement_level == "low":
-                context_parts.append("ACTION NEEDED: While they appear neutral, their engagement is low. Try to spark interest with a relevant example or application.")
+                context_parts.append("REQUIRED: While they appear neutral, their engagement is low. Begin with something like 'I notice your engagement might be waning...' then try to spark interest with a relevant example.")
             elif cognitive_load_level == "high":
-                context_parts.append("ACTION NEEDED: While they appear neutral, their cognitive load is high. Acknowledge this and simplify your explanation.")
+                context_parts.append("REQUIRED: While they appear neutral, their cognitive load is high. Begin with something like 'I can see this is quite demanding cognitively...' then simplify your explanation.")
         
         # Combine all parts
         return "\n".join(context_parts)
@@ -236,6 +236,16 @@ def chat():
     cognitive_state = data.get('cognitive_state', {})
     biometric_snapshot = data.get('biometric_snapshot', None)
     
+    # Enhanced logging for emotion processing debugging
+    logging.info(f"📩 RECEIVED MESSAGE: '{user_message}'")
+    logging.info(f"🧠 COGNITIVE STATE: {json.dumps(cognitive_state, indent=2)}")
+    if biometric_snapshot:
+        logging.info(f"📊 BIOMETRIC SNAPSHOT: {json.dumps(biometric_snapshot, indent=2)}")
+        emotion_data = biometric_snapshot.get('emotion', {})
+        logging.info(f"🎭 EMOTION FROM SNAPSHOT: {emotion_data.get('name')} (intensity: {emotion_data.get('intensity')})")
+    else:
+        logging.info("❌ NO BIOMETRIC SNAPSHOT PROVIDED")
+    
     # Log received data for debugging (excluding large fields)
     log_data = {
         'message': user_message,
@@ -255,11 +265,11 @@ def chat():
     # Example conditionings based on emotional state
     if cognitive_state.get('emotion') == 'frustrated':
         # More focused responses for frustrated users
-        temperature = 0.45  # Further reduced for more focused responses
+        temperature = 0.55  # Adjusted to maintain acknowledgment flexibility
         top_p = 0.8
     elif cognitive_state.get('emotion') == 'happy':
         # More creative responses for happy users
-        temperature = 0.55  # Reduced from 0.8 but still higher than default
+        temperature = 0.65  # Adjusted to maintain acknowledgment flexibility
         top_p = 0.9
     
     # Adjust based on engagement
@@ -273,15 +283,20 @@ def chat():
     emotion_intensity = 0.5  # Default intensity
     cognitive_load_level = "moderate"  # Default cognitive load
     
+    logging.info("🔄 PROCESSING BIOMETRIC DATA FOR LLM CONTEXT...")
+    
     if biometric_snapshot:
+        logging.info("✅ Using biometric snapshot for context generation")
         biometric_context = process_biometric_snapshot(biometric_snapshot)
-        logging.info(f"Generated biometric context: {biometric_context}")
+        logging.info(f"📝 GENERATED BIOMETRIC CONTEXT: {biometric_context}")
         
-        # Extract emotion and intensity for response framing
+        # Extract emotion and intensity for mandatory acknowledgment
         emotion = biometric_snapshot.get('emotion', {}).get('name', 'neutral')
         emotion_intensity = biometric_snapshot.get('emotion', {}).get('intensity', 0.5)
         
-        # Get cognitive load level for response framing
+        logging.info(f"🎯 EXTRACTED FOR LLM: emotion={emotion}, intensity={emotion_intensity}")
+        
+        # Get cognitive load level
         cognitive_load = biometric_snapshot.get('metrics', {}).get('cognitive_load', 0.5)
         if cognitive_load < 0.35:
             cognitive_load_level = "low"
@@ -290,7 +305,10 @@ def chat():
         else:
             cognitive_load_level = "high"
             
+        logging.info(f"🧠 COGNITIVE LOAD LEVEL: {cognitive_load_level} (raw: {cognitive_load})")
+            
     elif cognitive_state:
+        logging.info("⚠️ Falling back to simple cognitive state (no biometric snapshot)")
         # Fallback to simple cognitive state if no snapshot
         emotion = cognitive_state.get('emotion', 'neutral')
         engagement_level = cognitive_state.get('engagement', 0.5)
@@ -298,6 +316,12 @@ def chat():
         cognitive_load = cognitive_state.get('cognitiveLoad', 0.5)
         
         biometric_context = f"The learner currently appears {emotion} with engagement level {engagement_level:.2f}, attention level {attention_level:.2f}, and cognitive load {cognitive_load:.2f}."
+        # Add basic acknowledgment requirement for fallback
+        biometric_context += f"\nREQUIRED: Begin your response by acknowledging their {emotion} state before answering their question."
+        
+        logging.info(f"📝 FALLBACK CONTEXT GENERATED: {biometric_context}")
+    else:
+        logging.warning("❌ NO BIOMETRIC DATA OR COGNITIVE STATE PROVIDED - USING DEFAULTS")
     
     # Format conversation for context with instructor prompt
     recent_history = "\n".join(conversation_history[-5:])  # Last 5 messages
@@ -315,42 +339,47 @@ def chat():
         else:
             conversation_flow_context = f"The learner took {int(time_since_last_ai_response)} seconds before responding."
     
-    # Combine all context elements
+    # Restructured prompt order for better instruction hierarchy
     prompt = f"{INSTRUCTOR_PROMPT}\n\n"
     
-    if biometric_context:
-        # Add Response Framing section for more explicit guidance
-        response_framing = f"""
-RESPONSE FRAMING:
-Begin your response by explicitly acknowledging the learner's current state.
-For example:
-- "I notice you seem {emotion} with this topic..."
-- "I can see this material might be {cognitive_load_level == 'high' and 'challenging' or 'manageable'} for you right now..."
-- "Your engagement level suggests..."
+    # 1. MANDATORY acknowledgment instruction (highest priority)
+    mandatory_acknowledgment = """
+MANDATORY FIRST STEP: Your response MUST begin with acknowledging the learner's emotional state.
+Use one of these required formats:
+- "I can see you're feeling [emotion]..."
+- "I notice you seem [emotion] about this..."  
+- "It looks like you're [emotion] with this topic..."
 
-This acknowledgment should feel natural and supportive, not clinical. After acknowledging their state,
-continue with your explanation at an appropriate level of detail.
+Only after this acknowledgment, proceed to answer their question.
+
+RESPONSE SEQUENCE:
+1. FIRST: Acknowledge emotional state
+2. THEN: Answer the user's question  
+3. END: Do not add follow-up questions
+
+BOUNDARIES: Respond only to the user's question. Do not generate follow-up questions or continue the conversation with yourself.
 """
-        prompt += f"Learner's Current State:\n{biometric_context}\n\n{response_framing}\n\n"
+    
+    prompt += mandatory_acknowledgment + "\n"
+    
+    # 2. Biometric context (provides specific data)
+    if biometric_context:
+        prompt += f"Learner's Current State:\n{biometric_context}\n\n"
         
-        # Add emphasis for strong emotional states
-        if emotion != 'neutral' or emotion_intensity > 0.7:
+        # 3. Add emphasis for non-neutral emotions (neutral requires higher threshold)
+        if emotion != 'neutral':
+            prompt += f"IMPORTANT: Make sure to acknowledge the learner's {emotion} state prominently in your first sentence.\n\n"
+        elif emotion == 'neutral' and emotion_intensity > 0.6:
             prompt += f"IMPORTANT: Make sure to acknowledge the learner's {emotion} state prominently in your first sentence.\n\n"
     
+    # 4. Conversation flow context
     if conversation_flow_context:
         prompt += f"{conversation_flow_context}\n"
     
+    # 5. Recent conversation history
     prompt += f"Recent conversation:\n{recent_history}\n"
     
-    # Add explicit instruction to prevent self-talk
-    prompt += """
-IMPORTANT: Focus only on responding directly to the user's most recent message. 
-Do not continue the conversation with yourself or generate follow-up questions and answers.
-Your response should be a single, coherent answer addressing what the user just asked.
-
-"""
-    
-    # Clear separator for the actual response
+    # 6. Clear separator for the actual response
     prompt += "AI Instructor: "
     
     logging.info(f"Generating response with temp={temperature}, top_p={top_p}, max_tokens={max_tokens}")

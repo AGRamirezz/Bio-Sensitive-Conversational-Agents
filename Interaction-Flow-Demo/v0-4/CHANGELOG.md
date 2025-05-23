@@ -2,6 +2,34 @@
 
 All notable changes to the Bio-Adaptive Tutor project will be documented in this file.
 
+## [v0.4.0] - 2024-01-15
+
+### Added
+- **Telemetry Snapshot System**: 5-second time window emotion analysis with composite scoring (frequency × confidence × recency)
+- **Enhanced LLM Integration**: Emotion-aware AI responses with mandatory emotional acknowledgment patterns
+- **Advanced Prompt Templates**: Sophisticated context injection that requires AI to recognize user emotional states
+- **Comprehensive Logging**: Complete emotion detection pipeline tracing from webcam to LLM response
+- **Time Window Analysis**: Intelligent emotion selection based on recent detection history rather than instant readings
+- **Test Infrastructure**: `test_fixes.html` for debugging emotion detection and global variable issues
+
+### Fixed
+- **Global Variable Accessibility**: `window.currentEmotion` and `window.emotionIntensity` now properly accessible across all modules
+- **Webcam Integration**: Emotion detection now correctly populates the emotion buffer and triggers LLM context
+- **Neutral Emotion Over-representation**: 90% confidence threshold and 10% scoring penalty for neutral emotions
+- **Biometric Context Generation**: Proper emotion data flow from detection to LLM prompt engineering
+
+### Improved
+- **Chain of Reasoning**: Clear processing pipeline: Detection → Buffer → Analysis → Context → LLM → Response
+- **Emotion Recognition Messaging**: AI agent now acknowledges user emotions with patterns like "I can see you're feeling frustrated..."
+- **Debugging Capabilities**: Enhanced console logging throughout the entire emotion processing workflow
+- **Code Architecture**: Better separation of concerns between emotion detection, analysis, and LLM integration
+
+### Technical Details
+- Emotion buffer stores last 5 seconds of detection data with timestamp and confidence
+- Composite scoring algorithm weighs recent emotions more heavily
+- LLM server processes biometric snapshots with enhanced emotion context
+- Visual pulse effects indicate successful emotion state changes
+
 ## [v0.4] - 2023-05-21
 
 ### Fixed

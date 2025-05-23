@@ -1476,70 +1476,20 @@ class WebcamPanel extends Panel {
             this.bioSignalData.currentEmotion = detectedEmotion;
             this.bioSignalData.emotion = detectedEmotion;
             
-            // 2. If in webcam mode, update global variables DIRECTLY
-            // This matches how the gauges update (direct assignment)
+            // 2. If in webcam mode, update global variables through proper function
+            // This ensures the emotion buffer gets populated correctly
             if (webcamControlsState === true) {
-              // Use direct global variable updates like the gauges do
-              console.log(`🎭 WEBCAM MODE: Directly updating global emotion to ${detectedEmotion}`);
+              console.log(`🎭 WEBCAM MODE: Using forceGlobalEmotionUpdate for ${detectedEmotion}`);
               
-              // CRITICAL FIX: Direct assignment to window global variables
-              // This is exactly how the gauge code works - direct window property access
-              window.currentEmotion = detectedEmotion;
-              window.emotionIntensity = 0.7; // Set moderate intensity for visibility
+              // Use the proper function that integrates with the emotion buffer
+              this.forceGlobalEmotionUpdate(detectedEmotion, confidence / 100);
               
-              // Direct assignment to global state
-              window.currentEmotion = detectedEmotion;
-              window.emotionIntensity = 0.7; // Set moderate intensity for visibility
+              // The forceGlobalEmotionUpdate function will handle:
+              // - Adding to emotion buffer 
+              // - Updating global variables
+              // - Updating cognitive metrics
+              // - Adding visual pulse effects
               
-              // CRITICAL ADDITION: Update gauge metrics directly based on emotion
-              // This ensures gauges update even when the emotion-aggregate API fails
-              const emotionMetricsMap = {
-                'happy': { engagement: 0.85, attention: 0.75, cognitiveLoad: 0.25 },
-                'neutral': { engagement: 0.60, attention: 0.55, cognitiveLoad: 0.45 },
-                'confused': { engagement: 0.45, attention: 0.60, cognitiveLoad: 0.75 },
-                'frustrated': { engagement: 0.35, attention: 0.40, cognitiveLoad: 0.85 },
-                'angry': { engagement: 0.40, attention: 0.50, cognitiveLoad: 0.80 },
-                'sad': { engagement: 0.30, attention: 0.35, cognitiveLoad: 0.60 },
-                'disgust': { engagement: 0.35, attention: 0.40, cognitiveLoad: 0.70 },
-                'fear': { engagement: 0.50, attention: 0.70, cognitiveLoad: 0.80 },
-                'surprise': { engagement: 0.70, attention: 0.80, cognitiveLoad: 0.65 }
-              };
-              
-              // Get metrics for this emotion with fallback to neutral
-              const metrics = emotionMetricsMap[detectedEmotion.toLowerCase()] || emotionMetricsMap['neutral'];
-              
-              // Add slight randomness to create natural fluctuations (+/- 5%)
-              const randomFactor = emotion => (1.0 + (Math.random() * 0.1 - 0.05));
-              
-              // Update bioSignalData metrics (the primary source for gauge readings)
-              this.bioSignalData.engagement = metrics.engagement * randomFactor() || 0.5;
-              this.bioSignalData.attention = metrics.attention * randomFactor() || 0.5;
-              this.bioSignalData.cognitiveLoad = metrics.cognitiveLoad * randomFactor() || 0.5;
-              
-              // Update window globals too for redundancy
-              if (typeof window.engagementScore !== 'undefined') window.engagementScore = this.bioSignalData.engagement;
-              if (typeof window.attentionScore !== 'undefined') window.attentionScore = this.bioSignalData.attention;
-              if (typeof window.cognitiveLoad !== 'undefined') window.cognitiveLoad = this.bioSignalData.cognitiveLoad;
-              
-              // Log the updated metrics
-              console.log(`📊 UPDATING METRICS: Eng=${this.bioSignalData.engagement.toFixed(2)} Att=${this.bioSignalData.attention.toFixed(2)} Cog=${this.bioSignalData.cognitiveLoad.toFixed(2)}`);
-              
-              // Force global update - log the actual values to verify assignment worked
-              console.log(`✅ VERIFY GLOBALS: currentEmotion=${window.currentEmotion}, intensity=${window.emotionIntensity}`);
-              
-              // Add visual feedback using global function
-              if (typeof window.addPulseEffect === 'function' && 
-                  typeof window.stateX !== 'undefined') {
-                try {
-                  window.addPulseEffect(
-                    window.stateX, window.stateY, window.stateW, window.stateH,
-                    window.accentColor1 || {r: 75, g: 207, b: 250}
-                  );
-                  console.log(`✨ Added pulse effect to emotion panel`);
-                } catch (err) {
-                  console.error(`Failed to add pulse effect: ${err.message}`);
-                }
-              }
             } else {
               console.log(`🎭 AUTO MODE: Webcam detection stored but not updating global state`);
             }
@@ -2113,6 +2063,18 @@ class WebcamPanel extends Panel {
     // Log this force update attempt
     console.log(`FORCE UPDATE: Setting global emotion to ${detectedEmotion} (confidence: ${confidence.toFixed(2)})`);
     
+    // ADD TO EMOTION BUFFER for time window analysis
+    console.log(`🔍 DEBUG: Checking for addEmotionToBuffer function...`);
+    console.log(`🔍 DEBUG: typeof window.addEmotionToBuffer = ${typeof window.addEmotionToBuffer}`);
+    
+    if (typeof window.addEmotionToBuffer === 'function') {
+      console.log(`🔄 CALLING: addEmotionToBuffer(${detectedEmotion}, ${confidence * 100})`);
+      window.addEmotionToBuffer(detectedEmotion, confidence * 100); // Convert back to 0-100 range
+      console.log(`📊 Added ${detectedEmotion} (${confidence.toFixed(2)}) to emotion buffer`);
+    } else {
+      console.error(`❌ ERROR: addEmotionToBuffer function not available! Type: ${typeof window.addEmotionToBuffer}`);
+    }
+    
     // 1. Set the bioSignalData first
     if (this.bioSignalData) {
       this.bioSignalData.currentEmotion = detectedEmotion;
@@ -2120,33 +2082,67 @@ class WebcamPanel extends Panel {
     }
     
     // 2. Directly set global variables regardless of previous state
-    if (typeof window.currentEmotion !== 'undefined') {
-      window.currentEmotion = detectedEmotion;
-    }
+    window.currentEmotion = detectedEmotion;
     
     // 3. Set emotion intensity high enough to be clearly visible but not too high
-    if (typeof window.emotionIntensity !== 'undefined') {
-      window.emotionIntensity = 0.7; // Moderate intensity that matches other parts of the code
+    window.emotionIntensity = 0.7; // Moderate intensity that matches other parts of the code
+    
+    // 4. Update cognitive metrics based on emotion (moved from deleted direct update code)
+    const emotionMetricsMap = {
+      'happy': { engagement: 0.85, attention: 0.75, cognitiveLoad: 0.25 },
+      'neutral': { engagement: 0.60, attention: 0.55, cognitiveLoad: 0.45 },
+      'confused': { engagement: 0.45, attention: 0.60, cognitiveLoad: 0.75 },
+      'frustrated': { engagement: 0.35, attention: 0.40, cognitiveLoad: 0.85 },
+      'angry': { engagement: 0.40, attention: 0.50, cognitiveLoad: 0.80 },
+      'sad': { engagement: 0.30, attention: 0.35, cognitiveLoad: 0.60 },
+      'disgust': { engagement: 0.35, attention: 0.40, cognitiveLoad: 0.70 },
+      'fear': { engagement: 0.50, attention: 0.70, cognitiveLoad: 0.80 },
+      'surprise': { engagement: 0.70, attention: 0.80, cognitiveLoad: 0.65 }
+    };
+    
+    // Get metrics for this emotion with fallback to neutral
+    const metrics = emotionMetricsMap[detectedEmotion.toLowerCase()] || emotionMetricsMap['neutral'];
+    
+    // Add slight randomness to create natural fluctuations (+/- 5%)
+    const randomFactor = () => (1.0 + (Math.random() * 0.1 - 0.05));
+    
+    // Update bioSignalData metrics (the primary source for gauge readings)
+    if (this.bioSignalData) {
+      this.bioSignalData.engagement = metrics.engagement * randomFactor() || 0.5;
+      this.bioSignalData.attention = metrics.attention * randomFactor() || 0.5;
+      this.bioSignalData.cognitiveLoad = metrics.cognitiveLoad * randomFactor() || 0.5;
     }
     
-    // 4. Update cognitive metrics if the function exists
+    // Update window globals too for redundancy
+    if (typeof window.engagementScore !== 'undefined') window.engagementScore = this.bioSignalData.engagement;
+    if (typeof window.attentionScore !== 'undefined') window.attentionScore = this.bioSignalData.attention;
+    if (typeof window.cognitiveLoad !== 'undefined') window.cognitiveLoad = this.bioSignalData.cognitiveLoad;
+    
+    // Log the updated metrics
+    console.log(`📊 UPDATING METRICS: Eng=${this.bioSignalData.engagement.toFixed(2)} Att=${this.bioSignalData.attention.toFixed(2)} Cog=${this.bioSignalData.cognitiveLoad.toFixed(2)}`);
+    
+    // 5. Update cognitive metrics if the legacy function exists (for compatibility)
     if (typeof window.updateCognitiveMetricsForEmotion === 'function') {
       window.updateCognitiveMetricsForEmotion(detectedEmotion);
     }
     
-    // 5. Add a visual pulse effect to emphasize the change
+    // Force global update - log the actual values to verify assignment worked
+    console.log(`✅ VERIFY GLOBALS: currentEmotion=${window.currentEmotion}, intensity=${window.emotionIntensity}`);
+    
+    // 6. Add a visual pulse effect to emphasize the change
     if (typeof window.addPulseEffect === 'function' && 
         typeof window.stateX !== 'undefined' &&
         typeof window.stateY !== 'undefined' &&
         typeof window.stateW !== 'undefined' &&
         typeof window.stateH !== 'undefined') {
       
-      // Use accentColor2 for consistent visual identification
-      const pulseColor = window.accentColor2 || {r: 131, g: 56, b: 236};
+      // Use accentColor1 for consistent visual identification
+      const pulseColor = window.accentColor1 || {r: 75, g: 207, b: 250};
       window.addPulseEffect(window.stateX, window.stateY, window.stateW, window.stateH, pulseColor);
+      console.log(`✨ Added pulse effect to emotion panel`);
     }
     
-    // 6. Force a redraw
+    // 7. Force a redraw
     this.markDirty();
   }
 }
