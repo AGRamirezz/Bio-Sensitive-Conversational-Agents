@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements an interactive dashboard for visualizing cognitive and emotional states in real-time. It's designed to display bio-signal data from computer vision emotion detection and simulate EEG readings, tracking engagement, attention, cognitive load, and emotional states. A preliminary integration with a local LLM for bio-adaptive responses has been added as an experimental feature.
+This project implements an interactive dashboard representing cognitive and emotional states in real-time for Adaptive AI Agent responses. It's designed to display bio-signal data from computer vision emotion detection and simulate EEG readings, tracking engagement, attention, cognitive load, and emotional states. A preliminary integration with a local LLM for bio-adaptive responses has been added as an experimental feature.
 
 ## Environment Setup
 
