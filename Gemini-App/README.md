@@ -1,4 +1,4 @@
-# Run and deploy your Gemini based app
+# Run and deploy the Gemini based app
 
 This contains everything you need to run your app locally.
 
