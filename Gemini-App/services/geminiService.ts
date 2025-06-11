@@ -125,12 +125,13 @@ export const generateResponseFromGemini = async (userText: string, userEmotion: 
 
     switch (userEmotion) {
         case Emotion.Positive:
-            acknowledgementPrefix = "It's great that you're feeling positive! ";
+            acknowledgementPrefix = "It's great to see that you're feeling positive! ";
             break;
         case Emotion.Negative:
-            acknowledgementPrefix = "I sense you might be feeling a bit negative, and that's okay. Let's work through this. ";
+            acknowledgementPrefix = "I see that you might be feeling a bit negative, and that's okay. Let's work through this. ";
             break;
         case Emotion.Neutral:
+            // No prefix for neutral emotion
             break;
     }
     
