@@ -1,9 +1,9 @@
 {
-  "name": "AI Emotion-Adaptive Conversationalist",
-  "description": "An application that allows users to interact with an AI via speech. The AI attempts to detect the user's emotion from their speech and webcam facial analysis, and adapt its responses accordingly.",
   "requestFramePermissions": [
-    "microphone",
-    "camera"
+    "camera",
+    "microphone"
   ],
+  "name": "AI Emotion-Adaptive Conversationalist (Experimental)",
+  "description": "",
   "prompt": ""
 }

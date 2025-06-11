@@ -9,7 +9,21 @@ import {
   analyzeFacialEmotionViaGemini, 
   generateResponseFromGemini 
 } from './services/geminiService';
-import { startListening, stopListening, speakText, isSpeechRecognitionSupported, isSpeechSynthesisSupported } from './services/speechService';
+import { 
+    startListening, 
+    stopListening, 
+    speakText, 
+    isSpeechRecognitionSupported, 
+    isSpeechSynthesisSupported,
+    cancelCurrentSpeech 
+} from './services/speechService';
+import { splitIntoSentences, groupSentencesIntoChunks } from './services/textUtils';
+
+// Constants for dynamic watchdog timeout
+const MIN_SPEECH_WATCHDOG_TIMEOUT_MS = 5000; // Minimum 5 seconds
+const MAX_SPEECH_WATCHDOG_TIMEOUT_MS = 28000; // Maximum 28 seconds
+const CHARS_PER_SECOND_ESTIMATE = 10; // Estimated characters spoken per second
+const WATCHDOG_BUFFER_MS = 1000; // Additional buffer for safety (reduced from 3000ms)
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,6 +40,8 @@ const App: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null); 
+  const speechWatchdogTimerRef = useRef<number | null>(null);
+  const completedChunks = useRef(new Set<number>());
 
   useEffect(() => {
     if (typeof process.env.API_KEY !== 'string' || process.env.API_KEY === '') {
@@ -71,18 +87,23 @@ const App: React.FC = () => {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
       }
+      if (speechWatchdogTimerRef.current) {
+        clearTimeout(speechWatchdogTimerRef.current);
+      }
     };
   }, [apiKeyExists, speechSupported, startWebcam]);
 
-  const addMessageAndSpeak = useCallback((
+  // Simplified function to add message to state, speech is handled by caller context
+  const addMessage = (
     text: string, 
     sender: Sender, 
     emotionForAIReply?: Emotion,
     isAnnotation: boolean = false,
-    annotationDetails?: { overallEmotion: Emotion; textEmotion: Emotion; facialEmotion?: Emotion | null }
+    annotationDetails?: { overallEmotion: Emotion; textEmotion: Emotion; facialEmotion?: Emotion | null },
+    customId?: string
   ) => {
     setMessages(prev => [...prev, { 
-      id: Date.now().toString(), 
+      id: customId || Date.now().toString(), 
       text, 
       sender, 
       emotion: sender === Sender.AI && !isAnnotation ? emotionForAIReply : undefined, 
@@ -90,38 +111,20 @@ const App: React.FC = () => {
       isAnnotation,
       annotationDetails
     }]);
-
-    if (sender === Sender.AI && !isAnnotation && synthesisSupported) {
-      // For AI's conversational replies, use the emotion that guided the response.
-      // For annotations or user messages, speech is handled elsewhere or not applicable.
-      speakText(text, emotionForAIReply || Emotion.Neutral);
-    }
-  }, [synthesisSupported]);
+  };
 
 
   useEffect(() => {
-    if (apiKeyExists && synthesisSupported && messages.length === 0) {
+    if (apiKeyExists && messages.length === 0) { // synthesisSupported check removed for initial visual message
       const greeting = "Hello! I'm your AI Upskilling Tutor. I'm here to help you learn about business analytics, sales CRM, project management, and more. What topic are you interested in exploring today?";
       
-      // Add message to display
-      setMessages(prev => [...prev, { 
-        id: Date.now().toString(), 
-        text: greeting, 
-        sender: Sender.AI, 
-        emotion: Emotion.Neutral, 
-        timestamp: new Date()
-      }]);
+      addMessage(greeting, Sender.AI, Emotion.Neutral);
 
-      // Conditionally speak the greeting
-      // This constant should ideally be shared or imported if it's a global config.
-      // For now, redeclaring to match the one in geminiService.ts for this specific logic.
       const USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT = false; 
       
       if (USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT && synthesisSupported) {
-        // If Gemini TTS is intended and supported, try speaking.
         speakText(greeting, Emotion.Neutral);
       } else if (synthesisSupported) {
-        // If falling back to browser TTS, log that we're skipping auto-speech for the initial greeting.
         console.log("Initial greeting displayed. Auto-speak via browser TTS skipped for initial greeting to prevent 'not-allowed' error. User-triggered AI responses will be spoken.");
       }
     }
@@ -155,14 +158,10 @@ const App: React.FC = () => {
     if (facialEmotionResult) {
       analysisText += `, Facial emotion: ${facialEmotionResult.emotion}`;
       if (facialEmotionResult.emotion === Emotion.Positive || facialEmotionResult.emotion === Emotion.Negative) {
-        // Give precedence to clear facial positive/negative over text, unless text is also strongly emotional
         if (textEmotionResult.emotion === Emotion.Neutral || textEmotionResult.emotion === facialEmotionResult.emotion) {
             combinedEmotion = facialEmotionResult.emotion;
         } else if ( (textEmotionResult.emotion === Emotion.Positive && facialEmotionResult.emotion === Emotion.Negative) ||
                     (textEmotionResult.emotion === Emotion.Negative && facialEmotionResult.emotion === Emotion.Positive) ) {
-            // Conflicting strong emotions - might be nuanced. For now, default to text or a more complex rule.
-            // Or consider making it Neutral if truly conflicting, or weighted.
-            // For simplicity, let's allow facial to override if it's strong.
              combinedEmotion = facialEmotionResult.emotion; 
         }
       }
@@ -177,10 +176,14 @@ const App: React.FC = () => {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    // Add user message (no speech for user message itself)
-    setMessages(prev => [...prev, { id: Date.now().toString(), text: transcript, sender: Sender.User, timestamp: new Date() }]);
+    
+    const userMessageId = Date.now().toString();
+    addMessage(transcript, Sender.User, undefined, false, undefined, userMessageId);
     setIsLoadingAI(true);
     setError(null);
+    completedChunks.current.clear(); // Reset for new AI response
+
+    let combinedEmotionForResponse: Emotion = Emotion.Neutral; 
 
     try {
       const frameData = webcamEnabled ? captureFrameAsBase64() : null;
@@ -195,41 +198,162 @@ const App: React.FC = () => {
         facialEmotionPromise
       ]);
       
-      const combinedEmotion = determineCombinedEmotion(textEmotionResult, facialEmotionResult);
-      setCurrentEmotion(combinedEmotion);
+      const determinedOverallEmotion = determineCombinedEmotion(textEmotionResult, facialEmotionResult);
+      setCurrentEmotion(determinedOverallEmotion);
+      combinedEmotionForResponse = determinedOverallEmotion; 
       
-      // Add the annotation message (no speech for annotation)
-      setMessages(prev => [...prev, {
-        id: Date.now().toString() + "-annotation", 
-        text: "Emotion analysis complete", 
-        sender: Sender.AI, 
-        timestamp: new Date(),
-        isAnnotation: true,
-        annotationDetails: { 
-          overallEmotion: combinedEmotion, 
+      addMessage(
+        "Emotion analysis complete", 
+        Sender.AI, 
+        undefined, 
+        true, 
+        { 
+          overallEmotion: determinedOverallEmotion, 
           textEmotion: textEmotionResult.emotion, 
           facialEmotion: facialEmotionResult ? facialEmotionResult.emotion : null 
-        }
-      }]);
+        },
+        `${userMessageId}-annotation`
+      );
       
+      const fullAiResponseText = await generateResponseFromGemini(transcript, determinedOverallEmotion);
 
-      const aiResponseText = await generateResponseFromGemini(transcript, combinedEmotion);
-      addMessageAndSpeak(aiResponseText, Sender.AI, combinedEmotion); // This will handle speaking
+      let acknowledgementPrefix = "";
+      let coreResponseText = fullAiResponseText;
+
+      if (determinedOverallEmotion === Emotion.Positive) {
+        const prefix = "It's great to see that you're feeling positive! ";
+        if (fullAiResponseText.startsWith(prefix)) {
+          acknowledgementPrefix = prefix;
+          coreResponseText = fullAiResponseText.substring(prefix.length);
+        }
+      } else if (determinedOverallEmotion === Emotion.Negative) {
+        const prefix = "I see that you might be feeling a bit negative, and that's okay. Let's work through this. ";
+         if (fullAiResponseText.startsWith(prefix)) {
+          acknowledgementPrefix = prefix;
+          coreResponseText = fullAiResponseText.substring(prefix.length);
+        }
+      }
+
+      const sentences = splitIntoSentences(coreResponseText);
+      const MAX_SENTENCES_PER_CHUNK = 2;
+      const responseChunks = groupSentencesIntoChunks(sentences, MAX_SENTENCES_PER_CHUNK);
+      
+      if (responseChunks.length === 0 && acknowledgementPrefix) {
+          responseChunks.push(""); 
+      } else if (responseChunks.length === 0 && !acknowledgementPrefix) {
+          responseChunks.push("I don't have anything specific to add to that right now."); 
+      }
+
+      const processNextChunk = (chunkIndex: number) => {
+        if (speechWatchdogTimerRef.current) { // Clear previous watchdog, if any from a prior chunk
+          clearTimeout(speechWatchdogTimerRef.current);
+          speechWatchdogTimerRef.current = null;
+        }
+
+        if (chunkIndex >= responseChunks.length) {
+          setIsLoadingAI(false); 
+          return;
+        }
+
+        let chunkText = responseChunks[chunkIndex];
+        if (chunkIndex === 0 && acknowledgementPrefix) {
+          chunkText = acknowledgementPrefix + chunkText;
+        }
+        
+        if (!chunkText.trim() && chunkIndex === 0 && !acknowledgementPrefix && responseChunks.length === 1) {
+           setIsLoadingAI(false);
+           return;
+        }
+         if (!chunkText.trim() && !(chunkIndex === 0 && acknowledgementPrefix)) {
+          if (!completedChunks.current.has(chunkIndex)) {
+            completedChunks.current.add(chunkIndex);
+          }
+          processNextChunk(chunkIndex + 1);
+          return;
+        }
+
+        addMessage(
+          chunkText, 
+          Sender.AI, 
+          determinedOverallEmotion, 
+          false, 
+          undefined, 
+          `${userMessageId}-ai-chunk-${chunkIndex}`
+        );
+
+        const handleChunkCompletionInternal = () => {
+          if (speechWatchdogTimerRef.current) { 
+            clearTimeout(speechWatchdogTimerRef.current);
+            speechWatchdogTimerRef.current = null;
+          }
+
+          if (completedChunks.current.has(chunkIndex)) {
+            console.warn(`[App] handleChunkCompletionInternal for chunk ${chunkIndex} called again. Ignoring to prevent duplicate processing.`);
+            return;
+          }
+          completedChunks.current.add(chunkIndex);
+          processNextChunk(chunkIndex + 1);
+        };
+
+        if (synthesisSupported) {
+          speakText(chunkText, determinedOverallEmotion, handleChunkCompletionInternal);
+          
+          // Dynamic watchdog timeout calculation
+          const estimatedDurationMs = (chunkText.length / CHARS_PER_SECOND_ESTIMATE) * 1000;
+          const timeoutDuration = Math.max(
+            MIN_SPEECH_WATCHDOG_TIMEOUT_MS,
+            Math.min(MAX_SPEECH_WATCHDOG_TIMEOUT_MS, estimatedDurationMs + WATCHDOG_BUFFER_MS)
+          );
+          
+          console.log(`[App] Watchdog for chunk ${chunkIndex} set to ${timeoutDuration}ms for text: "${chunkText.substring(0,30)}..."`);
+
+          speechWatchdogTimerRef.current = setTimeout(() => {
+            console.warn(`[App] Speech watchdog timed out for chunk ${chunkIndex} (after ${timeoutDuration}ms). Forcing progression.`);
+            cancelCurrentSpeech(); 
+          }, timeoutDuration);
+
+        } else {
+          // No synthesis, simulate chunk progression for UI
+          if(chunkIndex < responseChunks.length - 1) {
+             if (!completedChunks.current.has(chunkIndex)) {
+                completedChunks.current.add(chunkIndex);
+             }
+            setTimeout(() => processNextChunk(chunkIndex + 1), 50); 
+          } else {
+             if (!completedChunks.current.has(chunkIndex)) {
+                completedChunks.current.add(chunkIndex);
+             }
+            setIsLoadingAI(false);
+          }
+        }
+      };
+      
+      if (responseChunks.length > 0) {
+        processNextChunk(0);
+      } else {
+        addMessage("Hmm, I'm not sure how to respond to that.", Sender.AI, Emotion.Neutral);
+        if(synthesisSupported) speakText("Hmm, I'm not sure how to respond to that.", Emotion.Neutral, () => setIsLoadingAI(false));
+        else setIsLoadingAI(false);
+      }
 
     } catch (e: any) {
       console.error("Error processing speech or AI response:", e);
+      if (speechWatchdogTimerRef.current) {
+        clearTimeout(speechWatchdogTimerRef.current);
+        speechWatchdogTimerRef.current = null;
+      }
       const errorMessage = e.message || "An error occurred with the AI services.";
       setError(errorMessage);
-      addMessageAndSpeak(errorMessage, Sender.AI, Emotion.Neutral); // Speak error with neutral emotion
-    } finally {
-      setIsLoadingAI(false);
-    }
-  }, [webcamEnabled, determineCombinedEmotion, addMessageAndSpeak]); 
+      addMessage(errorMessage, Sender.AI, Emotion.Neutral);
+      if (synthesisSupported) speakText(errorMessage, Emotion.Neutral, () => setIsLoadingAI(false));
+      else setIsLoadingAI(false);
+    } 
+  }, [webcamEnabled, determineCombinedEmotion, synthesisSupported]); 
 
   const handleToggleListening = useCallback(() => {
     if (!apiKeyExists || !speechSupported) {
       const message = !apiKeyExists ? "API Key is not configured." : "Speech recognition not supported.";
-      if (synthesisSupported) speakText(message, Emotion.Neutral); // Speak alert with neutral emotion
+      if (synthesisSupported) speakText(message, Emotion.Neutral);
       setError(message);
       return;
     }
