@@ -1,19 +1,21 @@
 
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Emotion, DetectedEmotionResult } from '../types';
-import { 
-    GEMINI_TEXT_MODEL, 
-    TEXT_EMOTION_ANALYSIS_PROMPT_PREFIX, 
-    TEXT_EMOTION_ANALYSIS_PROMPT_SUFFIX, 
+import {
+    GEMINI_TEXT_MODEL,
+    GEMINI_TTS_MODEL,
+    GEMINI_TTS_DEFAULT_VOICE,
+    TEXT_EMOTION_ANALYSIS_PROMPT_PREFIX,
+    TEXT_EMOTION_ANALYSIS_PROMPT_SUFFIX,
     FACIAL_EMOTION_ANALYSIS_PROMPT,
-    getAIMessageSystemInstruction 
+    getAIMessageSystemInstruction
 } from '../constants';
 
 let ai: GoogleGenAI | null = null;
 
 const initializeAi = () => {
   if (ai) return;
-  
+
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     console.error("Gemini API Key (process.env.API_KEY) is not defined.");
@@ -40,13 +42,13 @@ export const analyzeTextEmotionViaGemini = async (text: string): Promise<Detecte
   if (!ai) throw new Error("Gemini AI client not initialized.");
 
   const prompt = `${TEXT_EMOTION_ANALYSIS_PROMPT_PREFIX}${text}${TEXT_EMOTION_ANALYSIS_PROMPT_SUFFIX}`;
-  
+
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_TEXT_MODEL,
         contents: prompt,
         config: {
-            temperature: 0.2, 
+            temperature: 0.2,
             topK: 5,
             topP: 0.9,
         }
@@ -54,7 +56,7 @@ export const analyzeTextEmotionViaGemini = async (text: string): Promise<Detecte
 
     const rawEmotionText = response.text.trim();
     const detectedEmotion = parseEmotionResponse(rawEmotionText);
-    
+
     return { emotion: detectedEmotion, analysis: rawEmotionText };
 
   } catch (error) {
@@ -71,7 +73,7 @@ export const analyzeFacialEmotionViaGemini = async (base64ImageData: string): Pr
 
   const imagePart = {
     inlineData: {
-      mimeType: 'image/jpeg', 
+      mimeType: 'image/jpeg',
       data: imageData,
     },
   };
@@ -81,10 +83,10 @@ export const analyzeFacialEmotionViaGemini = async (base64ImageData: string): Pr
 
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL, 
-        contents: { parts: [textPart, imagePart] }, 
+        model: GEMINI_TEXT_MODEL,
+        contents: { parts: [textPart, imagePart] },
         config: {
-            temperature: 0.3, 
+            temperature: 0.3,
             topK: 5,
             topP: 0.9,
         }
@@ -92,7 +94,7 @@ export const analyzeFacialEmotionViaGemini = async (base64ImageData: string): Pr
 
     const rawEmotionText = response.text.trim();
     const detectedEmotion = parseEmotionResponse(rawEmotionText);
-    
+
     return { emotion: detectedEmotion, analysis: rawEmotionText };
 
   } catch (error) {
@@ -111,15 +113,15 @@ export const generateResponseFromGemini = async (userText: string, userEmotion: 
   try {
     const geminiResponse: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_TEXT_MODEL,
-        contents: userText, 
+        contents: userText,
         config: {
             systemInstruction: systemInstruction,
-            temperature: 0.7, 
+            temperature: 0.7,
             topP: 0.95,
             topK: 40,
         }
     });
-    
+
     let coreResponseText = geminiResponse.text.trim();
     let acknowledgementPrefix = "";
 
@@ -134,7 +136,7 @@ export const generateResponseFromGemini = async (userText: string, userEmotion: 
             // No prefix for neutral emotion
             break;
     }
-    
+
     return `${acknowledgementPrefix}${coreResponseText}`;
 
   } catch (error) {
@@ -143,75 +145,77 @@ export const generateResponseFromGemini = async (userText: string, userEmotion: 
   }
 };
 
+// Flag to control usage of Gemini Native TTS
+const USE_GEMINI_NATIVE_TTS = true;
+
 export const generateSpeechAudioFromGemini = async (text: string, emotion: Emotion): Promise<string | null> => {
+  if (!USE_GEMINI_NATIVE_TTS) {
+    console.log("[Gemini TTS] Native Gemini TTS is disabled. Falling back to browser synthesis if available in speechService.");
+    return null;
+  }
+
   initializeAi();
   if (!ai) {
     console.error("[Gemini TTS] Gemini AI client not initialized.");
     return null;
   }
 
-  let systemInstructionForTTS: string;
+  let ttsPrompt: string;
   switch (emotion) {
     case Emotion.Positive:
-      systemInstructionForTTS = "You are an advanced voice generation model. Generate audio for the following text in a genuinely cheerful, upbeat, and encouraging tone. The output should be only the audio, no other text or explanations.";
+      ttsPrompt = `Say in a genuinely cheerful, upbeat, and encouraging tone: ${text}`;
       break;
     case Emotion.Negative:
-      systemInstructionForTTS = "You are an advanced voice generation model. Generate audio for the following text in a genuinely gentle, empathetic, and patient tone. The output should be only the audio, no other text or explanations.";
+      ttsPrompt = `Say in a genuinely gentle, empathetic, and patient tone: ${text}`;
       break;
     case Emotion.Neutral:
     default:
-      systemInstructionForTTS = "You are an advanced voice generation model. Generate audio for the following text in a clear, informative, and standard professional tone. The output should be only the audio, no other text or explanations.";
+      ttsPrompt = `Say in a clear, informative, and standard professional tone: ${text}`;
       break;
   }
 
-  // This flag controls whether the hypothetical Gemini TTS call is attempted.
-  // Set to true ONLY if the @google/genai SDK and model support audio output
-  // through a mechanism like 'responseMimeType' and a specific audio field in the response.
-  const USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT = false; 
-
-  if (!USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT) {
-    console.warn("[Gemini TTS] Hypothetical API call for speech generation is currently disabled in `generateSpeechAudioFromGemini`. This is due to the lack of specific SDK documentation for direct audio output from `ai.models.generateContent` in the provided guidelines. Falling back to browser synthesis if available in `speechService`.");
-    return null;
-  }
-
   try {
-    console.log(`[Gemini TTS] Requesting speech for: "${text}" with emotion: ${emotion}`);
-    console.log(`[Gemini TTS] System Instruction: ${systemInstructionForTTS}`);
-
-    // HYPOTHETICAL API CALL STRUCTURE:
-    // The actual method for getting audio might be different (e.g., a dedicated TTS model or API method).
-    // This assumes `generateContent` can be configured to output audio and that audio
-    // would appear in a field like `response.audioBytes` or similar.
+    console.log(`[Gemini TTS] Requesting speech for: "${text.substring(0, 70)}..." with emotion: ${emotion}`);
+    
     const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_TEXT_MODEL, // This might need to be a specific TTS-enabled model
-        contents: [{ role: "user", parts: [{ text: text }] }], // Text to synthesize
+        model: GEMINI_TTS_MODEL,
+        contents: ttsPrompt,
         config: {
-            systemInstruction: systemInstructionForTTS,
-            // HYPOTHETICAL: Parameter to request audio output.
-            // This would depend on actual API specification.
-            // responseMimeType: "audio/mp3", 
-            // temperature: 0.7, // May or may not apply to TTS
+            responseModalities: ["AUDIO"],
+            speechConfig: { 
+                voiceConfig: { 
+                    prebuiltVoiceConfig: { // Corrected: prebuilt_voice_config -> prebuiltVoiceConfig
+                        voice_name: GEMINI_TTS_DEFAULT_VOICE,
+                    }
+                }
+            },
+            // As per TTS docs, other parameters like temperature are not typically used here.
         }
     });
 
-    // HYPOTHETICAL: How audio data might be extracted from the response.
-    // This is purely speculative. The 'GenerateContentResponse' type would need to support this.
-    // e.g., const audioBase64 = (response as any).audioContent; 
-    // For this example, we'll log the text response and return null, as `response.text` is for text.
-    
-    console.log("[Gemini TTS] Hypothetical call made. Response text (not audio):", response.text);
-    // If audioBase64 were available:
-    // if (audioBase64 && typeof audioBase64 === 'string' && audioBase64.length > 100) {
-    //   console.log("[Gemini TTS] Received hypothetical audio data (base64). Length:", audioBase64.length);
-    //   return audioBase64;
-    // } else {
-    //   console.warn("[Gemini TTS] Hypothetical call made, but no audio data found in expected (speculative) location.");
-    //   return null;
-    // }
-    return null; // Returning null as we don't have a confirmed way to get audio bytes.
+    // Extract base64 encoded PCM data as per official TTS documentation
+    const pcmDataBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+    if (pcmDataBase64 && typeof pcmDataBase64 === 'string' && pcmDataBase64.length > 100) {
+        console.log(`[Gemini TTS] Received base64 PCM data. Length: ${pcmDataBase64.length}.`);
+        return pcmDataBase64;
+    } else {
+        console.warn(`[Gemini TTS] Did not receive valid base64 PCM data. Response part:`, response.candidates?.[0]?.content?.parts?.[0]);
+        return null;
+    }
 
   } catch (error) {
-    console.error('[Gemini TTS] Error during hypothetical speech audio generation:', error);
+    console.error('[Gemini TTS] Error during native speech audio generation:', error);
+    // Log the full error object for more details
+    if (error && typeof error === 'object' && 'message' in error) {
+       console.error(`[Gemini TTS] Error message: ${(error as Error).message}`);
+    }
+    // It's helpful to see the full structure if the API returns a complex error
+    try {
+        console.error('[Gemini TTS] Full error object (stringified):', JSON.stringify(error));
+    } catch (e) {
+        console.error('[Gemini TTS] Could not stringify full error object.');
+    }
     return null;
   }
 };

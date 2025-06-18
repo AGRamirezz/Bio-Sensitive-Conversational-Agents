@@ -1,4 +1,3 @@
-
 // @ts-nocheck // Disable TypeScript checking for SpeechRecognition vendor prefixes
 
 import { generateSpeechAudioFromGemini } from './geminiService';
@@ -7,6 +6,33 @@ import { Emotion } from '../types';
 let recognition: SpeechRecognition | null = null;
 let synthesis = window.speechSynthesis;
 let preferredVoices: SpeechSynthesisVoice[] = [];
+
+let audioContext: AudioContext | null = null;
+
+interface SpeechLifecycleCallbacks {
+  onStart?: () => void;
+  onEnd?: () => void;
+  onError?: (error?: any) => void;
+}
+
+let currentSpeechLifecycleCallbacks: SpeechLifecycleCallbacks | null = null;
+let activePcmSourceNode: AudioBufferSourceNode | null = null;
+let activeBrowserUtterance: SpeechSynthesisUtterance | null = null;
+
+
+const getAudioContext = (): AudioContext | null => {
+  if (audioContext && audioContext.state !== 'closed') {
+    return audioContext;
+  }
+  try {
+    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    return audioContext;
+  } catch (e) {
+    console.error("[Speech Service] Error creating AudioContext:", e);
+    return null;
+  }
+};
+
 
 if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -22,10 +48,10 @@ const loadVoices = () => {
   if (!synthesis) return;
   let voices = synthesis.getVoices();
   if (voices.length > 0) {
-    preferredVoices = voices.filter(voice => 
-      voice.lang.startsWith('en') && 
-      (voice.name.toLowerCase().includes('female') || 
-       voice.name.toLowerCase().includes('zira') || 
+    preferredVoices = voices.filter(voice =>
+      voice.lang.startsWith('en') &&
+      (voice.name.toLowerCase().includes('female') ||
+       voice.name.toLowerCase().includes('zira') ||
        voice.name.toLowerCase().includes('susan') ||
        voice.name.toLowerCase().includes('joanna') ||
        voice.name.toLowerCase().includes('kendra') ||
@@ -43,24 +69,20 @@ const loadVoices = () => {
     if (preferredVoices.length === 0) {
         preferredVoices = voices.filter(voice => voice.lang.startsWith('en')).slice(0, 5);
     }
-    // console.log("[Speech Service] Preferred voices loaded:", preferredVoices.map(v => v.name));
-  } else {
-    // console.log("[Speech Service] No voices available yet in loadVoices.");
   }
 };
 
 if (synthesis) {
-    loadVoices(); // Initial attempt
+    loadVoices(); 
     if (synthesis.onvoiceschanged !== undefined) {
         synthesis.onvoiceschanged = loadVoices;
     } else {
-        // Fallback for browsers that don't support onvoiceschanged well
-        setTimeout(loadVoices, 500); 
+        setTimeout(loadVoices, 500);
     }
 }
 
 export const startListening = (
-  onResult: (transcript: string) => void, 
+  onResult: (transcript: string) => void,
   onFinalResult: (transcript: string) => void,
   onError: (error: SpeechRecognitionErrorEvent) => void
 ): void => {
@@ -81,13 +103,13 @@ export const startListening = (
 
   recognition.onend = () => {
     onFinalResult(finalTranscript.trim());
-    finalTranscript = ''; 
+    finalTranscript = '';
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
     onError(event);
   };
-  
+
   try {
     recognition.start();
   } catch (e) {
@@ -102,236 +124,242 @@ export const stopListening = (): void => {
   }
 };
 
-
-// --- Enhanced Speech Synthesis Logic ---
-let activeUtterance: SpeechSynthesisUtterance | null = null;
-let appLevelActiveCallback: (() => void) | null = null; // Callback for the utterance App.tsx thinks is active
-
-export const cancelCurrentSpeech = (): void => {
-  if (!synthesis) return;
-  const textOfCancelled = activeUtterance ? activeUtterance.text.substring(0, 30) : "N/A";
-  console.log(`[Speech Service] cancelCurrentSpeech called. Targeting utterance: "${textOfCancelled}..."`);
-
-  const callbackToExecute = appLevelActiveCallback; // Store the callback for the utterance that was active
-  const utteranceThatWasActive = activeUtterance;
-
-  // 1. Clear global state that tracks the "active" utterance from app's perspective
-  activeUtterance = null;
-  appLevelActiveCallback = null;
-
-  // 2. Detach handlers from the specific utterance that *was* active, to prevent latent firing
-  if (utteranceThatWasActive) {
-    console.log(`[Speech Service] Detaching handlers from utterance during cancel: "${utteranceThatWasActive.text.substring(0,30)}..."`)
-    utteranceThatWasActive.onend = null;
-    utteranceThatWasActive.onerror = null;
-  }
-  
-  // 3. Cancel any speech currently happening or queued in the browser's synthesis engine
-  if (synthesis.speaking || synthesis.pending) {
-    console.log("[Speech Service] Instructing browser synthesis to cancel.");
-    synthesis.cancel(); 
+const triggerSpeechLifecycleEnd = (reason: string) => {
+  if (currentSpeechLifecycleCallbacks?.onEnd) {
+    console.log(`[Speech Service] Triggering onEnd callback due to: ${reason}`);
+    const callback = currentSpeechLifecycleCallbacks.onEnd;
+    currentSpeechLifecycleCallbacks = null; 
+    activePcmSourceNode = null;
+    activeBrowserUtterance = null;
+    callback();
   } else {
-    console.log("[Speech Service] Browser synthesis not speaking or pending, no explicit cancel sent.");
-  }
-
-  // 4. Execute the completion callback associated with the utterance we intended to cancel.
-  // This tells App.tsx to proceed to the next chunk or finish loading.
-  if (callbackToExecute) {
-    console.log("[Speech Service] Executing app-level completion callback due to cancelCurrentSpeech.");
-    callbackToExecute(); 
-  } else {
-    console.log("[Speech Service] No app-level callback was set to execute upon cancelCurrentSpeech.");
+    // console.log(`[Speech Service] Wanted to trigger onEnd (reason: ${reason}), but no onEnd callback was set or already cleared.`);
+    currentSpeechLifecycleCallbacks = null; // Ensure cleared anyway
+    activePcmSourceNode = null;
+    activeBrowserUtterance = null;
   }
 };
 
-const playWithBrowserTTS = (text: string, emotion: Emotion, onSpeechEndCallbackForThisUtterance?: () => void): void => {
-  if (!synthesis) {
-    console.warn("[Speech Service] Browser Speech Synthesis API not supported. Cannot play TTS.");
-    if (onSpeechEndCallbackForThisUtterance) {
-      onSpeechEndCallbackForThisUtterance();
+const triggerSpeechLifecycleError = (reason: string, errorDetails?: any) => {
+  if (currentSpeechLifecycleCallbacks?.onError) {
+    console.log(`[Speech Service] Triggering onError callback due to: ${reason}`, errorDetails);
+    const callback = currentSpeechLifecycleCallbacks.onError;
+    currentSpeechLifecycleCallbacks = null;
+    activePcmSourceNode = null;
+    activeBrowserUtterance = null;
+    callback(errorDetails);
+  } else if (currentSpeechLifecycleCallbacks?.onEnd) { // Fallback to onEnd if onError is not provided
+    console.warn(`[Speech Service] onError triggered (reason: ${reason}), but no onError callback. Falling back to onEnd.`);
+    triggerSpeechLifecycleEnd(`error fallback: ${reason}`);
+  } else {
+    // console.log(`[Speech Service] Wanted to trigger onError (reason: ${reason}), but no onError/onEnd callback was set or already cleared.`);
+    currentSpeechLifecycleCallbacks = null; // Ensure cleared anyway
+    activePcmSourceNode = null;
+    activeBrowserUtterance = null;
+  }
+};
+
+
+export const cancelCurrentSpeech = (): void => {
+  console.log("[Speech Service] cancelCurrentSpeech invoked.");
+  let speechWasActive = false;
+
+  if (activePcmSourceNode) {
+    console.log("[Speech Service] cancelCurrentSpeech: Stopping active PCM playback.");
+    speechWasActive = true;
+    try {
+      activePcmSourceNode.onended = null; 
+      activePcmSourceNode.stop();
+    } catch (e) { console.warn("[Speech Service] Error stopping PCM source node during cancel:", e); }
+  }
+
+  if (activeBrowserUtterance) {
+    console.log("[Speech Service] cancelCurrentSpeech: Cancelling active browser TTS utterance.");
+    speechWasActive = true;
+    activeBrowserUtterance.onend = null; 
+    activeBrowserUtterance.onerror = null;
+    if (synthesis && (synthesis.speaking || synthesis.pending)) {
+      synthesis.cancel();
     }
-    return;
   }
   
-  const textSnippet = text.substring(0, 30);
-  console.log(`[Speech Service] playWithBrowserTTS called for: "${textSnippet}..."`);
+  // If speech was active OR a callback set exists, trigger the onEnd (treating cancellation as a form of completion).
+  if (speechWasActive || currentSpeechLifecycleCallbacks) {
+    triggerSpeechLifecycleEnd("explicit cancellation via cancelCurrentSpeech");
+  } else {
+    // console.log("[Speech Service] cancelCurrentSpeech found no active speech to cancel and no pending callback.");
+  }
+};
 
-  // --- Handling currently active/previous speech ---
-  if (activeUtterance) {
-    const oldUtteranceText = activeUtterance.text.substring(0, 30);
-    console.log(`[Speech Service] Replacing active utterance "${oldUtteranceText}" with new request for "${textSnippet}".`);
-    
-    const callbackForOldUtterance = appLevelActiveCallback; // Store callback for the utterance being replaced
-
-    // Detach handlers of the old utterance
-    if (activeUtterance) { // Check again in case it was nulled by an async event
-        activeUtterance.onend = null;
-        activeUtterance.onerror = null;
-    }
-    
-    // Clear global state related to the old utterance
-    activeUtterance = null; 
-    appLevelActiveCallback = null;
-
-    // IMPORTANT: Call the completion callback of the utterance being replaced.
-    // This signals that the previous chunk is "done" from the app's perspective.
-    if (callbackForOldUtterance) {
-      console.log(`[Speech Service] Calling completion callback for REPLACED utterance "${oldUtteranceText}".`);
-      callbackForOldUtterance();
-    }
+const playPcmData = (base64PcmData: string): void => {
+  const localAudioContext = getAudioContext();
+  if (!localAudioContext) {
+    console.error("[Speech Service] Cannot play PCM data: AudioContext not available.");
+    triggerSpeechLifecycleError("PCM play error - no AudioContext");
+    return;
   }
 
-  // Cancel any synthesis activity in the browser's queue.
-  // This should happen *after* we've programmatically "ended" the previous chunk from the app's perspective.
-  if (synthesis.speaking || synthesis.pending) {
-    console.log("[Speech Service] Browser synthesis is speaking or pending. Cancelling before new TTS request.");
-    synthesis.cancel(); // This clears browser's internal queue.
+  try {
+    const byteCharacters = atob(base64PcmData);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const pcmArrayBuffer = byteArray.buffer;
+
+    const sampleRate = 24000;
+    const numChannels = 1;
+    const bytesPerSample = 2; 
+    const numFrames = pcmArrayBuffer.byteLength / (numChannels * bytesPerSample);
+
+    const audioBuffer = localAudioContext.createBuffer(numChannels, numFrames, sampleRate);
+    const pcmDataView = new DataView(pcmArrayBuffer);
+    const float32Data = new Float32Array(numFrames);
+    for (let i = 0; i < numFrames; i++) {
+      const sample = pcmDataView.getInt16(i * bytesPerSample, true); 
+      float32Data[i] = sample / 32768.0; 
+    }
+    audioBuffer.copyToChannel(float32Data, 0);
+
+    const pcmSourceNode = localAudioContext.createBufferSource();
+    pcmSourceNode.buffer = audioBuffer;
+    pcmSourceNode.connect(localAudioContext.destination);
+    
+    activePcmSourceNode = pcmSourceNode; 
+
+    // Call onStart lifecycle callback
+    if (currentSpeechLifecycleCallbacks?.onStart) {
+        console.log("[Speech Service] PCM playback is about to start. Triggering onStart.");
+        currentSpeechLifecycleCallbacks.onStart();
+    }
+
+    pcmSourceNode.onended = () => {
+      if (activePcmSourceNode === pcmSourceNode) { // Check if it's still the active node
+        console.log("[Speech Service] PCM playback naturally ended for the active source.");
+        triggerSpeechLifecycleEnd("PCM natural end");
+      }
+    };
+
+    pcmSourceNode.start(0);
+    console.log("[Speech Service] Started Gemini TTS (PCM) playback.");
+
+  } catch (error) {
+    console.error("[Speech Service] Error playing PCM data:", error);
+    triggerSpeechLifecycleError("PCM play error - exception during setup/start", error);
   }
-  // --- End handling currently active/previous speech ---
+};
+
+const playWithBrowserTTS = (text: string, emotion: Emotion): void => {
+  if (!synthesis) {
+    console.warn("[Speech Service] Browser Speech Synthesis API not supported.");
+    triggerSpeechLifecycleError("Browser TTS error - API not supported");
+    return;
+  }
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US';
   utterance.volume = 1;
 
   switch (emotion) {
-    case Emotion.Positive:
-      utterance.pitch = 1.2;
-      utterance.rate = 1.05;
-      break;
-    case Emotion.Negative:
-      utterance.pitch = 0.85;
-      utterance.rate = 0.95;
-      break;
-    case Emotion.Neutral:
-    default:
-      utterance.pitch = 1;
-      utterance.rate = 1;
-      break;
+    case Emotion.Positive: utterance.pitch = 1.2; utterance.rate = 1.05; break;
+    case Emotion.Negative: utterance.pitch = 0.85; utterance.rate = 0.95; break;
+    default: utterance.pitch = 1; utterance.rate = 1; break;
   }
 
-  if (preferredVoices.length === 0) {
-    loadVoices();
-  }
+  if (preferredVoices.length === 0) loadVoices();
+  if (preferredVoices.length > 0) utterance.voice = preferredVoices[0];
 
-  if (preferredVoices.length > 0) {
-    utterance.voice = preferredVoices[0]; 
-  } else {
-    const englishVoices = (synthesis.getVoices() || []).filter(v => v.lang.startsWith('en'));
-    const femaleVoice = englishVoices.find(v => v.name.toLowerCase().includes('female')) || 
-                        englishVoices.find(v => (v as any).gender === 'female');
-    if (femaleVoice) utterance.voice = femaleVoice;
-    else if (englishVoices.length > 0) utterance.voice = englishVoices[0];
-    else console.warn(`[Speech Service] No English voices found for "${textSnippet}". Using browser default.`);
-  }
+  activeBrowserUtterance = utterance;
 
-  // This new utterance is now the "active" one from the app's perspective.
-  activeUtterance = utterance; 
-  appLevelActiveCallback = onSpeechEndCallbackForThisUtterance || null;
-
-  let hasFiredCallbackForThisSpecificUtterance = false;
-
-  const makeSafeCallbackCaller = (eventType: 'onend' | 'onerror') => {
+  const makeSafeCallbackCaller = (eventType: 'onstart' | 'onend' | 'onerror') => {
     return (event?: SpeechSynthesisEvent | SpeechSynthesisErrorEvent) => {
-      const currentSnippet = utterance.text.substring(0, 30);
-      if (event instanceof SpeechSynthesisErrorEvent) {
-        console.error(`[Speech Service] ${eventType} fired for: "${currentSnippet}" - Error: ${event.error}`, event);
-      } else {
-        console.log(`[Speech Service] ${eventType} fired for: "${currentSnippet}"`);
-      }
-
-      if (hasFiredCallbackForThisSpecificUtterance) {
-        console.log(`[Speech Service] ${eventType} for "${currentSnippet}" - callback already fired. Ignoring.`);
-        return;
-      }
-      hasFiredCallbackForThisSpecificUtterance = true;
-      
-      console.log(`[Speech Service] Processing ${eventType} for "${currentSnippet}". Current global activeUtterance is: "${activeUtterance ? activeUtterance.text.substring(0,30) : "null"}"`);
-
-      // If this utterance (the one the event fired for) is still the one the app considers globally active,
-      // it means it completed/errored naturally (not cancelled by watchdog, not replaced by a new speak call before its natural end).
-      // So, clear the global state associated with it.
-      if (utterance === activeUtterance) {
-        console.log(`[Speech Service] Natural ${eventType} for globally active utterance "${currentSnippet}". Clearing global active state.`);
-        activeUtterance = null;
-        appLevelActiveCallback = null;
-      } else {
-        console.log(`[Speech Service] ${eventType} for "${currentSnippet}", but it's no longer the global activeUtterance. Global state for it might have been cleared by replacement or cancellation logic.`);
-      }
-
-      // ALWAYS call the specific callback for this utterance if it exists and hasn't been fired yet.
-      if (onSpeechEndCallbackForThisUtterance) {
-        console.log(`[Speech Service] Calling specific completion callback for "${currentSnippet}" from ${eventType}.`);
-        onSpeechEndCallbackForThisUtterance();
+      if (activeBrowserUtterance === utterance) { // Check if it's still the active utterance
+        if (eventType === 'onstart') {
+          if (currentSpeechLifecycleCallbacks?.onStart) {
+            console.log("[Speech Service] Browser TTS playback started (onstart event). Triggering onStart.");
+            currentSpeechLifecycleCallbacks.onStart();
+          }
+        } else if (eventType === 'onend') {
+          console.log("[Speech Service] Browser TTS naturally ended.");
+          triggerSpeechLifecycleEnd("Browser TTS natural end");
+        } else if (eventType === 'onerror') {
+          console.error(`[Speech Service] Browser TTS Error: ${event instanceof SpeechSynthesisErrorEvent ? event.error : 'Unknown'}`, event);
+          triggerSpeechLifecycleError("Browser TTS error event", event);
+        }
       }
     };
   };
 
-  console.log(`[Speech Service] Attaching event handlers for utterance: "${textSnippet}"`);
+  utterance.onstart = makeSafeCallbackCaller('onstart');
   utterance.onend = makeSafeCallbackCaller('onend');
   utterance.onerror = makeSafeCallbackCaller('onerror');
   
+  // Fallback onStart trigger if browser's onstart is unreliable or fires too late for some.
+  // We are calling it more directly before `speak` for some browsers that might not fire `onstart` quickly.
+  // The `onstart` handler itself also calls it, so this might lead to double calls if not careful.
+  // For now, let `utterance.onstart` be the primary source for `onStart` call.
+  // if (currentSpeechLifecycleCallbacks?.onStart) {
+  //   console.log("[Speech Service] Browser TTS playback is about to start (before speak call). Triggering onStart.");
+  //   currentSpeechLifecycleCallbacks.onStart();
+  // }
+
+
   try {
-    console.log(`[Speech Service] Attempting to speak: "${textSnippet}" (Emotion: ${emotion}, Pitch: ${utterance.pitch}, Rate: ${utterance.rate})`);
     synthesis.speak(utterance);
   } catch (e) {
     console.error("[Speech Service] Error calling browser synthesis.speak:", e);
-    // Ensure callback is fired even if .speak() itself throws an error.
-    if (!hasFiredCallbackForThisSpecificUtterance) {
-        hasFiredCallbackForThisSpecificUtterance = true;
-        // Check if this was the intended active utterance before nullifying global state
-        if (utterance === activeUtterance) { 
-            activeUtterance = null;
-            appLevelActiveCallback = null;
-        }
-        if(onSpeechEndCallbackForThisUtterance) {
-            console.log(`[Speech Service] Calling specific completion callback for "${textSnippet}" due to speak() exception.`);
-            onSpeechEndCallbackForThisUtterance();
-        }
-    }
+    triggerSpeechLifecycleError("Browser TTS error - speak exception", e);
   }
 };
 
-export const speakText = async (text: string, emotion: Emotion, onEnd?: () => void): Promise<void> => {
+export const speakText = async (
+    text: string, 
+    emotion: Emotion, 
+    lifecycleCallbacks?: SpeechLifecycleCallbacks
+): Promise<void> => {
   if (!text || text.trim() === "") {
-    if (onEnd) onEnd();
+    lifecycleCallbacks?.onEnd?.(); // Call immediately if no text
     return;
   }
 
-  let audioPlayedViaGemini = false;
-  // const USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT = false; 
-  try {
-      const audioBase64 = await generateSpeechAudioFromGemini(text, emotion); 
-      if (audioBase64) {
-        const audioPlayer = new Audio(`data:audio/mp3;base64,${audioBase64}`);
-        
-        let onEndedCalled = false; 
-        const handleEnd = () => {
-          if (!onEndedCalled) {
-            onEndedCalled = true;
-            if (onEnd) onEnd();
-          }
-        };
+  console.log(`[Speech Service] speakText called for: "${text.substring(0,30)}...". Cancelling any prior speech.`);
+  cancelCurrentSpeech(); 
+  
+  currentSpeechLifecycleCallbacks = lifecycleCallbacks || null;
+  activePcmSourceNode = null; 
+  activeBrowserUtterance = null;
 
-        audioPlayer.oncanplaythrough = () => {
-          audioPlayer.play().catch(e => {
-            console.error("[Speech Service] Error playing Gemini TTS audio from play() promise:", e);
-            playWithBrowserTTS(text, emotion, onEnd); 
-          });
-        };
+  let audioPlayedViaGemini = false;
+  try {
+      const pcmDataBase64 = await generateSpeechAudioFromGemini(text, emotion);
+      if (pcmDataBase64) {
+        playPcmData(pcmDataBase64);
         audioPlayedViaGemini = true;
-        audioPlayer.onended = handleEnd;
-        audioPlayer.onerror = (e) => {
-          console.error("[Speech Service] Error with Gemini TTS audio element:", e);
-          playWithBrowserTTS(text, emotion, onEnd); 
-        };
         return; 
       }
   } catch (geminiError) {
     console.error("[Speech Service] Error attempting Gemini TTS, falling back to browser synthesis:", geminiError);
+    // If Gemini TTS generation itself fails, trigger onError if available, otherwise onEnd
+    triggerSpeechLifecycleError("Gemini TTS generation failed", geminiError);
+    // No return here, so it can fall through to browser TTS if desired, but an error was already signaled.
+    // However, if an error is signaled, the caller (App.tsx) will likely stop.
+    // If we want a robust fallback even on Gemini generation error, we'd not call triggerSpeechLifecycleError here
+    // and let it fall to browser TTS. For now, let's assume error means stop.
+    // To enable fallback: comment out triggerSpeechLifecycleError above if pcmDataBase64 is null
+    // and let it proceed to browser TTS.
+    // For current design, if Gemini fails to generate, that's an error.
+    return;
   }
 
   if (!audioPlayedViaGemini) {
-    playWithBrowserTTS(text, emotion, onEnd);
+    console.log("[Speech Service] Gemini TTS did not produce audio or was skipped, using browser TTS.");
+    // Check if an error was already triggered (e.g., Gemini explicitly disabled and returned null, not an error)
+    if (currentSpeechLifecycleCallbacks) { 
+        playWithBrowserTTS(text, emotion);
+    } else {
+        console.log("[Speech Service] Callbacks were cleared (likely by a preceding error), skipping browser TTS fallback.");
+    }
   }
 };
 
