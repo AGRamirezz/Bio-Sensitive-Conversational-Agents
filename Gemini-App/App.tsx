@@ -23,7 +23,7 @@ import { splitIntoSentences, groupSentencesIntoChunks } from './services/textUti
 const MIN_SPEECH_WATCHDOG_TIMEOUT_MS = 5000; // Minimum 5 seconds
 const MAX_SPEECH_WATCHDOG_TIMEOUT_MS = 28000; // Maximum 28 seconds
 const CHARS_PER_SECOND_ESTIMATE = 10; // Estimated characters spoken per second
-const WATCHDOG_BUFFER_MS = 1000; // Additional buffer for safety (reduced from 3000ms)
+const WATCHDOG_BUFFER_MS = 2000; // Additional buffer, slightly increased for TTS processing time
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -93,7 +93,6 @@ const App: React.FC = () => {
     };
   }, [apiKeyExists, speechSupported, startWebcam]);
 
-  // Simplified function to add message to state, speech is handled by caller context
   const addMessage = (
     text: string, 
     sender: Sender, 
@@ -115,20 +114,13 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    if (apiKeyExists && messages.length === 0) { // synthesisSupported check removed for initial visual message
+    if (apiKeyExists && messages.length === 0) { 
       const greeting = "Hello! I'm your AI Upskilling Tutor. I'm here to help you learn about business analytics, sales CRM, project management, and more. What topic are you interested in exploring today?";
-      
       addMessage(greeting, Sender.AI, Emotion.Neutral);
-
-      const USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT = false; 
-      
-      if (USE_HYPOTHETICAL_GEMINI_TTS_VIA_GENERATE_CONTENT && synthesisSupported) {
-        speakText(greeting, Emotion.Neutral);
-      } else if (synthesisSupported) {
-        console.log("Initial greeting displayed. Auto-speak via browser TTS skipped for initial greeting to prevent 'not-allowed' error. User-triggered AI responses will be spoken.");
-      }
+      // Initial greeting is not spoken to avoid auto-play issues on page load.
+      // User-triggered AI responses will be spoken.
     }
-  }, [apiKeyExists, synthesisSupported, messages.length]); 
+  }, [apiKeyExists, messages.length]); 
 
   const captureFrameAsBase64 = (): string | null => {
     if (!webcamEnabled || !videoRef.current || !canvasRef.current || videoRef.current.readyState < videoRef.current.HAVE_METADATA) {
@@ -181,7 +173,7 @@ const App: React.FC = () => {
     addMessage(transcript, Sender.User, undefined, false, undefined, userMessageId);
     setIsLoadingAI(true);
     setError(null);
-    completedChunks.current.clear(); // Reset for new AI response
+    completedChunks.current.clear(); 
 
     let combinedEmotionForResponse: Emotion = Emotion.Neutral; 
 
@@ -245,7 +237,7 @@ const App: React.FC = () => {
       }
 
       const processNextChunk = (chunkIndex: number) => {
-        if (speechWatchdogTimerRef.current) { // Clear previous watchdog, if any from a prior chunk
+        if (speechWatchdogTimerRef.current) { 
           clearTimeout(speechWatchdogTimerRef.current);
           speechWatchdogTimerRef.current = null;
         }
@@ -288,7 +280,7 @@ const App: React.FC = () => {
           }
 
           if (completedChunks.current.has(chunkIndex)) {
-            console.warn(`[App] handleChunkCompletionInternal for chunk ${chunkIndex} called again. Ignoring to prevent duplicate processing.`);
+            console.warn(`[App] handleChunkCompletionInternal for chunk ${chunkIndex} called again. Ignoring.`);
             return;
           }
           completedChunks.current.add(chunkIndex);
@@ -296,43 +288,45 @@ const App: React.FC = () => {
         };
 
         if (synthesisSupported) {
-          speakText(chunkText, determinedOverallEmotion, handleChunkCompletionInternal);
-          
-          // Dynamic watchdog timeout calculation
-          const estimatedDurationMs = (chunkText.length / CHARS_PER_SECOND_ESTIMATE) * 1000;
-          const timeoutDuration = Math.max(
-            MIN_SPEECH_WATCHDOG_TIMEOUT_MS,
-            Math.min(MAX_SPEECH_WATCHDOG_TIMEOUT_MS, estimatedDurationMs + WATCHDOG_BUFFER_MS)
-          );
-          
-          console.log(`[App] Watchdog for chunk ${chunkIndex} set to ${timeoutDuration}ms for text: "${chunkText.substring(0,30)}..."`);
+          speakText(chunkText, determinedOverallEmotion, {
+            onStart: () => {
+              const estimatedDurationMs = (chunkText.length / CHARS_PER_SECOND_ESTIMATE) * 1000;
+              const timeoutDuration = Math.max(
+                MIN_SPEECH_WATCHDOG_TIMEOUT_MS,
+                Math.min(MAX_SPEECH_WATCHDOG_TIMEOUT_MS, estimatedDurationMs + WATCHDOG_BUFFER_MS)
+              );
+              
+              console.log(`[App] Speech for chunk ${chunkIndex} STARTED. Watchdog set to ${timeoutDuration}ms for text: "${chunkText.substring(0,30)}..."`);
 
-          speechWatchdogTimerRef.current = setTimeout(() => {
-            console.warn(`[App] Speech watchdog timed out for chunk ${chunkIndex} (after ${timeoutDuration}ms). Forcing progression.`);
-            cancelCurrentSpeech(); 
-          }, timeoutDuration);
-
+              if (speechWatchdogTimerRef.current) {
+                  clearTimeout(speechWatchdogTimerRef.current);
+              }
+              speechWatchdogTimerRef.current = window.setTimeout(() => {
+                console.warn(`[App] Speech watchdog timed out for chunk ${chunkIndex} (after ${timeoutDuration}ms). Forcing progression.`);
+                cancelCurrentSpeech(); 
+              }, timeoutDuration);
+            },
+            onEnd: handleChunkCompletionInternal,
+            onError: (speechError) => {
+              console.error(`[App] Speech service reported an error for chunk ${chunkIndex}:`, speechError);
+              handleChunkCompletionInternal(); // Treat as completion to move on
+            }
+          });
         } else {
           // No synthesis, simulate chunk progression for UI
-          if(chunkIndex < responseChunks.length - 1) {
-             if (!completedChunks.current.has(chunkIndex)) {
-                completedChunks.current.add(chunkIndex);
-             }
-            setTimeout(() => processNextChunk(chunkIndex + 1), 50); 
-          } else {
-             if (!completedChunks.current.has(chunkIndex)) {
-                completedChunks.current.add(chunkIndex);
-             }
-            setIsLoadingAI(false);
-          }
+           if (!completedChunks.current.has(chunkIndex)) {
+              completedChunks.current.add(chunkIndex);
+           }
+          setTimeout(() => processNextChunk(chunkIndex + 1), 50); 
         }
       };
       
       if (responseChunks.length > 0) {
         processNextChunk(0);
       } else {
-        addMessage("Hmm, I'm not sure how to respond to that.", Sender.AI, Emotion.Neutral);
-        if(synthesisSupported) speakText("Hmm, I'm not sure how to respond to that.", Emotion.Neutral, () => setIsLoadingAI(false));
+        const fallbackMsg = "Hmm, I'm not sure how to respond to that.";
+        addMessage(fallbackMsg, Sender.AI, Emotion.Neutral);
+        if(synthesisSupported) speakText(fallbackMsg, Emotion.Neutral, { onEnd: () => setIsLoadingAI(false) });
         else setIsLoadingAI(false);
       }
 
@@ -345,7 +339,7 @@ const App: React.FC = () => {
       const errorMessage = e.message || "An error occurred with the AI services.";
       setError(errorMessage);
       addMessage(errorMessage, Sender.AI, Emotion.Neutral);
-      if (synthesisSupported) speakText(errorMessage, Emotion.Neutral, () => setIsLoadingAI(false));
+      if (synthesisSupported) speakText(errorMessage, Emotion.Neutral, { onEnd: () => setIsLoadingAI(false) });
       else setIsLoadingAI(false);
     } 
   }, [webcamEnabled, determineCombinedEmotion, synthesisSupported]); 

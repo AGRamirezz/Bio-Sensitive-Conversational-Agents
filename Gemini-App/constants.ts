@@ -1,16 +1,17 @@
-
 import { Emotion } from './types';
 
 export const GEMINI_TEXT_MODEL = 'gemini-2.5-flash-preview-04-17'; // This model is multimodal and can handle image input too
+export const GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts'; // Dedicated TTS model
+export const GEMINI_TTS_DEFAULT_VOICE = 'Autonoe'; // Default voice for TTS
 
-export const TEXT_EMOTION_ANALYSIS_PROMPT_PREFIX = 
-  `Critically analyze the sentiment and underlying emotion conveyed by the user's words, considering tone and context typical of spoken language. 
-   Classify the dominant emotion strictly as Positive, Negative, or Neutral. 
+export const TEXT_EMOTION_ANALYSIS_PROMPT_PREFIX =
+  `Critically analyze the sentiment and underlying emotion conveyed by the user's words, considering tone and context typical of spoken language.
+   Classify the dominant emotion strictly as Positive, Negative, or Neutral.
    Provide only one of these three words as your response. Text: "`;
 export const TEXT_EMOTION_ANALYSIS_PROMPT_SUFFIX = `"`;
 
 export const FACIAL_EMOTION_ANALYSIS_PROMPT =
-  `Analyze the dominant emotion expressed in this facial image. 
+  `Analyze the dominant emotion expressed in this facial image.
    Respond with ONLY ONE of the following words: Positive, Negative, or Neutral.
    Consider expressions like smiling, frowning, surprise, anger, sadness.
    If no clear emotion is detected, the face is not clear, or no face is present, respond with Neutral.`;
