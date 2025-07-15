@@ -1,8 +1,8 @@
-# Bio-Adaptive AI Tutor GUI Prototype (v0.4)
+# Bio-Adaptive AI Tutor GUI Prototype (v0.5)
 
 ## Overview
 
-This project implements an interactive dashboard representing cognitive and emotional states in real-time for Adaptive AI Agent responses. It's designed to display bio-signal data from computer vision emotion detection and simulate EEG readings, tracking engagement, attention, cognitive load, and emotional states. A preliminary integration with a local LLM for bio-adaptive responses has been added as an experimental feature.
+This project implements an interactive dashboard representing cognitive and emotional states in real-time for Adaptive AI Agent responses. It's designed to display bio-signal data from computer vision emotion detection integrate real EEG readings, tracking engagement, attention, cognitive load, and emotional states. A preliminary integration with a local LLM for bio-adaptive responses has been added as an experimental feature.
 
 ## Environment Setup
 
@@ -54,8 +54,7 @@ The application requires the following Python packages:
 ## Features
 
 ### 1. Bio-Signal Visualization System
-
-- **EEG Monitor**: Displays simulated alpha, beta, theta, and delta wave patterns with real-time animation
+- **EEG Monitor**: Displays user's alpha, beta, theta, and delta wave patterns with real-time animation
 - **Computer Vision**: Live webcam integration with facial emotion detection or simulated facial tracking
 - **Cognitive Metrics Simulation**: Maps detected emotions to simulated engagement, attention, and cognitive load metrics
 
@@ -79,7 +78,7 @@ The dashboard displays four key metrics:
 - **Responsive Emotional States**: The system dynamically adjusts emotional and cognitive states based on the active mode
 - **Intelligent Transitions**: Changes follow a probability model based on current emotional state
 - **Coherent Cognitive Metrics**: When emotional states change, engagement, attention, and cognitive load metrics shift accordingly
-- **Realistic Bio-Signals**: Simulated EEG wave patterns and facial expressions update to match the emotional state
+- **Extracted Bio-Signals**: real EEG wave patterns and facial expressions update to match the emotional state
 - **Contextual Telemetry**: System provides appropriate backend messages reflecting the state changes
 
 ### 5. AI Integration
@@ -112,6 +111,14 @@ The dashboard displays four key metrics:
 - **Efficient Communication**: Throttled API calls prevent overwhelming the server
 - **Graceful Degradation**: Falls back to basic detection if advanced features unavailable
 
+### EEG Integration
+
+- **Lightweight AF7‑Only Stream** Python sends just AF7’s delta/theta/alpha/beta band powers as JSON over a WebSocket at 5 Hz
+- **Seamless Integration & Fallback** The existing EEGPanel and sine‑wave generator remain untouched—live data simply overwrites amplitudes, and if the socket drops, it auto‑reverts to simulation
+- **Smooth 60 Hz Rendering** Incoming 5 Hz values are stored as “targets” and linearly interpolated each frame for fluid, jump‑free wave animation
+- **Configurable Normalization** Raw band‑power values are clamped and scaled into the 0.3–0.8 amplitude range, with per‑band input ranges you can tweak after observing real data
+
+ 
 ## Using the Webcam Feature
 
 1. **Start the face analysis server:**
@@ -142,7 +149,8 @@ The dashboard displays four key metrics:
    - Webcam mode for emotion-driven simulation
 4. Interact with the AI and observe the dynamic state changes
 5. Enable the webcam to use real facial emotion detection
-
+6. Connect Muse 2 Headset to integrate real EEG readings
+   
 ### Starting All Services
 
 For convenience, a startup script has been provided:
@@ -184,7 +192,33 @@ For convenience, a startup script has been provided:
 
 4. **Open your browser to http://localhost:8000**
 
-5. **Type messages in the chat box to interact with the AI tutor**
+5. **MUSE 2 Connection**
+# Activate your conda or virtual environment
+conda activate bio_agent1
+
+Power on Muse 2 Device
+
+# Install muselsl and the LSL Python bindings
+pip install muselsl pylsl
+muselsl stream
+
+-You should see:
+Searching for Muses, this may take up to 10 seconds...
+[Muse-2XXXX] connected.
+Streaming data...
+
+-In a separate terminal navigate to project 
+conda activate bio_agent1    # if needed
+python read_eeg.py
+
+What You'll See: 
+📡 Starting WebSocket server on ws://localhost:8765
+🔎 Looking for EEG stream...
+✅ EEG stream found. Starting viewer...
+✅ WebSocket client connected
+
+
+7. **Type messages in the chat box to interact with the AI tutor**
    - The system sends current cognitive/emotional state with each message
    - Responses are conditioned based on these bio-signals
    - Watch how the emotional and cognitive states dynamically respond to the conversation
@@ -192,7 +226,6 @@ For convenience, a startup script has been provided:
 ## Future Development
 
 - **Enhancement of AI Tutor Behavior**: Further refinement of prompt templates and cognitive conditioning
-- **Integration with Real EEG Data**: Replace simulated metrics with actual EEG readings
 - **Advanced Emotion Detection**: More sophisticated algorithms and personalized calibration
 - **Multi-Person Support**: Detection and tracking of multiple faces in the frame
 - **Eye Tracking Integration**: Additional biometric input for enhanced cognitive state assessment
