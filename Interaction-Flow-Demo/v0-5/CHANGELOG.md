@@ -2,7 +2,7 @@
 
 All notable changes to the Bio-Adaptive Tutor project will be documented in this file.
 
-## [v0.4.0] - 2024-01-15
+## [v0.4.0] - 2025-01-15
 
 ### Added
 - **Telemetry Snapshot System**: 5-second time window emotion analysis with composite scoring (frequency × confidence × recency)
@@ -30,7 +30,7 @@ All notable changes to the Bio-Adaptive Tutor project will be documented in this
 - LLM server processes biometric snapshots with enhanced emotion context
 - Visual pulse effects indicate successful emotion state changes
 
-## [v0.4] - 2023-05-21
+## [v0.4] - 2025-05-21
 
 ### Fixed
 - Corrected webcam mode emotion detection and display issues
