@@ -50,6 +50,8 @@ The application requires the following Python packages:
 - pillow
 - numpy
 - deepface (optional, for enhanced emotion detection)
+- pyobjc-framework-Cocoa (macOS only)
+- pyobjc-framework-CoreBluetooth (macOS only)
 
 ## Features
 
@@ -94,6 +96,14 @@ The dashboard displays four key metrics:
 - **Toggle Control**: Easy-to-use button to enable/disable webcam access
 - **Privacy Focused**: All processing happens locally, no data is sent to external servers
 - **Emotion-to-Metrics Mapping**: Translates detected emotions into simulated cognitive metrics
+
+### 7. EEG Integration
+
+- **Live EEG Streaming**: Real‑time capture of brainwave signals from the Muse 2 headset via a WebSocket server  
+- **Signal Processing Pipeline**: Converts raw EEG data into cognitive metrics (e.g., attention, engagement, cognitive load) using band‐power analysis  
+- **Adaptive Interface**: EEG metrics seamlessly feed into the bio‑signal monitoring panel, updating visual gauges in real time 
+- **Fallback Logic**: Automatically switches to simulated EEG data whenever the live connection is lost or unavailable  
+
 
 ## Technical Implementation
 
@@ -151,6 +161,7 @@ The dashboard displays four key metrics:
 5. Enable the webcam to use real facial emotion detection
 6. Connect Muse 2 Headset to integrate real EEG readings
    
+   
 ### Starting All Services
 
 For convenience, a startup script has been provided:
@@ -166,7 +177,7 @@ For convenience, a startup script has been provided:
    ```
    This will:
    - Set up the Python environment if needed
-   - Start both the LLM server and face analysis server
+   - Start both the LLM server and face analysis server and check for Muse2 Connection and run read_eeg.py
    - Provide instructions for accessing the application
 
 ### Using the LLM Integration
@@ -185,6 +196,7 @@ For convenience, a startup script has been provided:
    - LLM server runs on http://localhost:5000
    - Face analysis server runs on http://localhost:5005
 
+
 3. **Serve the p5.js application:**
    ```bash
    npx http-server . -c-1 -p 8000
@@ -192,37 +204,42 @@ For convenience, a startup script has been provided:
 
 4. **Open your browser to http://localhost:8000**
 
-5. **MUSE 2 Connection**
-# Activate your conda or virtual environment
-conda activate bio_agent1
 
-Power on Muse 2 Device
+### Muse 2 Connection
 
-# Install muselsl and the LSL Python bindings
-pip install muselsl pylsl
-muselsl stream
-
--You should see:
-Searching for Muses, this may take up to 10 seconds...
-[Muse-2XXXX] connected.
-Streaming data...
-
--In a separate terminal navigate to project 
-conda activate bio_agent1    # if needed
-python read_eeg.py
-
-What You'll See: 
-📡 Starting WebSocket server on ws://localhost:8765
-🔎 Looking for EEG stream...
-✅ EEG stream found. Starting viewer...
-✅ WebSocket client connected
-
-
-7. **Type messages in the chat box to interact with the AI tutor**
+1. **Ensure your conda environment is activated:**
+   ```bash
+   conda activate bio_agent1
+   ```
+2. **Power on Muse 2 device**
+3. **Install muselsl and the LSL Python bindings**
+  ```bash
+      pip install muselsl pylsl
+      muselsl stream
+   ```
+**You should see:**
+ ```bash
+      Searching for Muses, this may take up to 10 seconds...
+      [Muse-2XXXX] connected.
+      Streaming data...
+   ```
+4. **In a separate terminal:**
+ ```bash
+      conda activate bio_agent1  # if needed
+      python read_eeg.py
+   ```
+**You should see:**
+ ```bash
+      📡 Starting WebSocket server on ws://localhost:8765
+      🔎 Looking for EEG stream...
+      ✅ EEG stream found. Starting viewer...
+      ✅ WebSocket client connected
+   ```
+5.  **Type messages in the chat box to interact with the AI tutor**
    - The system sends current cognitive/emotional state with each message
    - Responses are conditioned based on these bio-signals
    - Watch how the emotional and cognitive states dynamically respond to the conversation
-
+     
 ## Future Development
 
 - **Enhancement of AI Tutor Behavior**: Further refinement of prompt templates and cognitive conditioning
