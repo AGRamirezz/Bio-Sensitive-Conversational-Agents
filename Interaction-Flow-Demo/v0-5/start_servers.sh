@@ -48,12 +48,22 @@ echo ""
 echo "Starting Bio-Adaptive AI Tutor servers..."
 echo ""
 
+# Ask user about EEG device
+echo "EEG Device Setup:"
+echo "Do you have a Muse 2 headset connected and ready? (y/n)"
+read -p "Enter choice: " eeg_choice
+echo ""
+
 # Function to handle cleanup
 cleanup() {
     echo ""
     echo "Shutting down servers..."
     # Kill background processes
     jobs -p | xargs -r kill
+    # If EEG was started, also kill muselsl
+    if [[ "$eeg_choice" =~ ^[Yy]$ ]]; then
+        pkill -f "muselsl stream" 2>/dev/null || true
+    fi
     exit 0
 }
 
@@ -69,19 +79,35 @@ llm_pid=$!
 sleep 3
 
 # Start Face Analysis Server  
-echo "📷 Starting Face Analysis Server (port 5001)..."
+echo "📷 Starting Face Analysis Server (port 5005)..."
 python face_analysis.py &
 face_pid=$!
 
 # Give face analysis server time to start
 sleep 3
 
-# Optional: Start EEG Server if file exists
-if [[ -f "read_eeg.py" ]]; then
+# Conditional EEG startup
+if [[ "$eeg_choice" =~ ^[Yy]$ ]]; then
+    echo "🧠 Starting EEG streaming with Muse 2..."
+    echo "   Please ensure your Muse 2 headset is powered on and nearby"
+    
+    # Start muselsl stream in background
+    muselsl stream &
+    muselsl_pid=$!
+    
+    # Give muselsl time to connect
+    sleep 5
+    
+    # Start EEG Server
     echo "🧠 Starting EEG Server (port 8080)..."
     python read_eeg.py &
     eeg_pid=$!
     sleep 2
+    
+    eeg_status="EEG Server: http://localhost:8080 (with Muse 2)"
+else
+    echo "⏭️  Skipping EEG setup - running in webcam-only mode"
+    eeg_status="EEG Server: Skipped (webcam-only mode)"
 fi
 
 echo ""
@@ -89,20 +115,18 @@ echo "========================================"
 echo "   Servers Started Successfully!"
 echo "========================================"
 echo ""
-echo "🌐 Open your web browser and navigate to:"
-echo "   file://$(pwd)/index.html"
+echo "🌐 Next steps:"
+echo "   1. Start frontend server: npx http-server . -c-1 -p 8000"
+echo "   2. Open browser to: http://localhost:8000/index.html"
 echo ""
 echo "📊 Server Status:"
 echo "   • LLM Server: http://localhost:5000"
-echo "   • Face Analysis: http://localhost:5001"
-if [[ -f "read_eeg.py" ]]; then
-echo "   • EEG Server: http://localhost:8080"
-fi
+echo "   • Face Analysis: http://localhost:5005"
+echo "   • $eeg_status"
 echo ""
 echo "⚠️  Note: First run will download AI model (~4GB)"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 echo ""
 
-# Wait for background processes
-wait 
+# Wait for background processes 

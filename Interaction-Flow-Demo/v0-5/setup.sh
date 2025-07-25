@@ -55,6 +55,13 @@ echo "Installing Python packages..."
 eval "$(conda shell.bash hook)"
 conda activate "$env_name"
 
+# Check if running on macOS and install Apple Silicon prerequisites first
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍎 macOS detected - installing Apple Silicon TensorFlow prerequisites..."
+    pip install tensorflow-macos==2.16.2 tensorflow-metal==1.2.0
+    echo "✅ Apple Silicon prerequisites installed"
+fi
+
 # Install all packages via pip
 pip install -r requirements.txt
 

@@ -29,26 +29,49 @@ chmod +x setup.sh
 The setup script will:
 - Let you choose a custom environment name (or use the default)
 - Create a conda environment with Python 3.9
+- Auto-detect macOS and install Apple Silicon TensorFlow prerequisites
 - Install all required packages via pip
 - Test that everything works correctly
 
 ### 2. Running the Application
 
+#### Method A: Automatic (Recommended)
 ```bash
-# Activate your environment (replace with your chosen name)
+# Terminal 1: Start backend servers (will prompt about EEG device)
 conda activate bio-adaptive-ai
-
-# Start all servers
 chmod +x start_servers.sh
 ./start_servers.sh
+
+# Terminal 2: Start frontend server
+npx http-server . -c-1 -p 8000
+
+# Browser: Open http://localhost:8000/index.html
 ```
 
-### 3. Open the Application
+#### Method B: Manual (Advanced Users)
+```bash
+# Terminal 1: LLM Server
+conda activate bio-adaptive-ai
+python LLM_Server.py
 
-Open your web browser and navigate to:
+# Terminal 2: Face Analysis Server
+python face_analysis.py
+
+# Terminal 3: EEG Server (Optional - only if you have Muse 2)
+muselsl stream &
+python read_eeg.py
+
+# Terminal 4: Frontend Server
+npx http-server . -c-1 -p 8000
+
+# Browser: Open http://localhost:8000/index.html
 ```
-file:///path/to/your/project/index.html
-```
+
+### 3. First Time Setup Notes
+- The AI model (~4GB) will download automatically on first use
+- The frontend server command `npx http-server . -c-1 -p 8000` serves the web interface
+- Use `http://localhost:8000/index.html` (not file:// URLs)
+- The `-c-1` flag disables caching for development
 
 ## 🧠 Hardware Setup (Optional)
 
