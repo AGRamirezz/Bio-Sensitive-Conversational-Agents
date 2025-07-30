@@ -35,7 +35,32 @@ The setup script will:
 
 ### 2. Running the Application
 
-#### Method A: Automatic (Recommended)
+#### Method A: Manual (Recommended)
+This is the most reliable method since each component runs in its own terminal:
+
+```bash
+# Terminal 1: LLM Server
+conda activate bio-adaptive-ai
+python LLM_Server.py
+
+# Terminal 2: Face Analysis Server
+python face_analysis.py
+
+# Terminal 3: EEG - Muse LSL Stream (Optional - only if you have Muse 2)
+muselsl stream
+
+# Terminal 4: EEG - Python Server (Optional - only if you have Muse 2)
+python read_eeg.py
+
+# Terminal 5: Frontend Server
+npx http-server . -c-1 -p 8000
+
+# Browser: Open http://localhost:8000/index.html
+```
+
+#### Method B: Automatic Script (Experimental)
+⚠️ **Note**: This method is experimental. Some users experience EEG connection issues. Use Method A (Manual) if you encounter problems.
+
 ```bash
 # Terminal 1: Start backend servers (will prompt about EEG device)
 conda activate bio-adaptive-ai
@@ -48,24 +73,7 @@ npx http-server . -c-1 -p 8000
 # Browser: Open http://localhost:8000/index.html
 ```
 
-#### Method B: Manual (Advanced Users)
-```bash
-# Terminal 1: LLM Server
-conda activate bio-adaptive-ai
-python LLM_Server.py
-
-# Terminal 2: Face Analysis Server
-python face_analysis.py
-
-# Terminal 3: EEG Server (Optional - only if you have Muse 2)
-muselsl stream &
-python read_eeg.py
-
-# Terminal 4: Frontend Server
-npx http-server . -c-1 -p 8000
-
-# Browser: Open http://localhost:8000/index.html
-```
+**Troubleshooting**: If EEG isn't working with the automatic script, use the Manual method instead.
 
 ### 3. First Time Setup Notes
 - The AI model (~4GB) will download automatically on first use
@@ -79,12 +87,10 @@ npx http-server . -c-1 -p 8000
 If you have a Muse 2 headset:
 
 1. **Power on** your Muse 2 headset
-2. **Start EEG streaming** (in a separate terminal):
-   ```bash
-   conda activate bio-adaptive-ai
-   muselsl stream
-   ```
-3. **Start the servers** as normal - EEG data will be automatically detected
+2. **For Manual method**: Follow the EEG terminal steps in Method A (use separate terminals)
+3. **For Automatic method**: The script will prompt you about EEG and handle the setup
+
+**Important**: The Muse LSL stream and Python EEG server work best in **separate terminals**. This is why the Manual method is more reliable.
 
 ### Webcam Only
 The system works perfectly without EEG hardware:
@@ -141,6 +147,31 @@ Should show: `OpenCV: 4.11.0.86` and `Has cv2.data: True`
 - Ensure stable internet connection
 - Check available disk space (5GB+ needed)
 - Restart the application if download was interrupted
+
+#### EEG Connection Issues
+**Problem**: Muse 2 headset not connecting or EEG data not appearing
+
+**Solutions**:
+- **Use Manual method**: Method A (Manual) is more reliable than the automatic script
+- **Separate terminals**: Always run `muselsl stream` and `python read_eeg.py` in separate terminals
+- **Device setup**: Ensure Muse 2 is powered on and nearby before starting
+- **Check device**: Run `muselsl list` to verify your Muse device is detected
+- **Restart sequence**: If connection fails, stop all processes and restart in this order:
+  1. `muselsl stream` (wait for "Looking for devices...")
+  2. `python read_eeg.py` (in separate terminal)
+- **Process cleanup**: If stuck, use `pkill -f "muselsl"` and `pkill -f "read_eeg.py"`
+
+**Debug steps**:
+```bash
+# Check if Muse device is detected
+muselsl list
+
+# Test stream connection (should show "Looking for devices...")
+muselsl stream
+
+# In separate terminal, check if EEG server connects
+python read_eeg.py
+```
 
 ### Validation Commands
 

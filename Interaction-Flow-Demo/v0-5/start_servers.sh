@@ -58,12 +58,21 @@ echo ""
 cleanup() {
     echo ""
     echo "Shutting down servers..."
-    # Kill background processes
-    jobs -p | xargs -r kill
-    # If EEG was started, also kill muselsl
-    if [[ "$eeg_choice" =~ ^[Yy]$ ]]; then
-        pkill -f "muselsl stream" 2>/dev/null || true
-    fi
+    
+    # Kill tracked PIDs (more reliable for nohup processes)
+    [[ -n "$llm_pid" ]] && kill $llm_pid 2>/dev/null || true
+    [[ -n "$face_pid" ]] && kill $face_pid 2>/dev/null || true
+    [[ -n "$muselsl_pid" ]] && kill $muselsl_pid 2>/dev/null || true
+    [[ -n "$eeg_pid" ]] && kill $eeg_pid 2>/dev/null || true
+    
+    # Fallback: Kill background processes and specific patterns
+    jobs -p | xargs -r kill 2>/dev/null || true
+    pkill -f "LLM_Server.py" 2>/dev/null || true
+    pkill -f "face_analysis.py" 2>/dev/null || true
+    pkill -f "muselsl stream" 2>/dev/null || true
+    pkill -f "read_eeg.py" 2>/dev/null || true
+    
+    echo "✅ All servers stopped"
     exit 0
 }
 
@@ -91,20 +100,25 @@ if [[ "$eeg_choice" =~ ^[Yy]$ ]]; then
     echo "🧠 Starting EEG streaming with Muse 2..."
     echo "   Please ensure your Muse 2 headset is powered on and nearby"
     
-    # Start muselsl stream in background
-    muselsl stream &
+    # Create logs directory if it doesn't exist
+    mkdir -p logs
+    
+    # Start muselsl stream with process isolation (nohup)
+    echo "   Starting Muse LSL stream (isolated process)..."
+    nohup muselsl stream > logs/muselsl.log 2>&1 &
     muselsl_pid=$!
     
-    # Give muselsl time to connect
-    sleep 5
+    # Give muselsl more time to connect and establish stream
+    echo "   Waiting for Muse device connection..."
+    sleep 10
     
-    # Start EEG Server
-    echo "🧠 Starting EEG Server (port 8080)..."
-    python read_eeg.py &
+    # Start EEG Server with process isolation
+    echo "🧠 Starting EEG Server (port 8765)..."
+    nohup python read_eeg.py > logs/read_eeg.log 2>&1 &
     eeg_pid=$!
-    sleep 2
+    sleep 3
     
-    eeg_status="EEG Server: http://localhost:8080 (with Muse 2)"
+    eeg_status="EEG Server: ws://localhost:8765 (with Muse 2)"
 else
     echo "⏭️  Skipping EEG setup - running in webcam-only mode"
     eeg_status="EEG Server: Skipped (webcam-only mode)"
@@ -123,6 +137,10 @@ echo "📊 Server Status:"
 echo "   • LLM Server: http://localhost:5000"
 echo "   • Face Analysis: http://localhost:5005"
 echo "   • $eeg_status"
+echo ""
+echo "📋 Process Logs (if EEG enabled):"
+echo "   • Muse LSL: logs/muselsl.log"
+echo "   • EEG Server: logs/read_eeg.log"
 echo ""
 echo "⚠️  Note: First run will download AI model (~4GB)"
 echo ""
