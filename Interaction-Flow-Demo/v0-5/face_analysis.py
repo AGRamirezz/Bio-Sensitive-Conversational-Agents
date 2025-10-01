@@ -84,6 +84,7 @@ except Exception as e:
 
 def process_frame_worker():
     """Worker thread to process frames from the queue"""
+    global results_history
     logging.info("Frame processing worker started")
     while True:
         try:
@@ -224,8 +225,19 @@ def analyze_face(image_data):
         else:
             try:
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-                logging.debug(f"Detected {len(faces)} faces")
+                all_faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+                logging.debug(f"Detected {len(all_faces)} total faces")
+                
+                # Select only the largest face (most prominent/closest to camera)
+                if len(all_faces) > 0:
+                    # Calculate area for each face and select the largest
+                    face_areas = [(x, y, w, h, w * h) for (x, y, w, h) in all_faces]
+                    largest_face = max(face_areas, key=lambda face: face[4])  # face[4] is area
+                    faces = [(largest_face[0], largest_face[1], largest_face[2], largest_face[3])]  # Remove area
+                    logging.info(f"Selected largest face from {len(all_faces)} detected faces: {faces[0]}")
+                else:
+                    faces = []
+                    
             except Exception as e:
                 logging.error(f"Error in face detection: {str(e)}")
                 faces = []
@@ -239,7 +251,7 @@ def analyze_face(image_data):
                 "face_locations": [[int(x), int(y), int(w), int(h)] for (x, y, w, h) in faces]
             }
         
-        # Process with DeepFace for the first detected face
+        # Process with DeepFace for the selected largest face
         try:
             x, y, w, h = faces[0]
             face_img = img[y:y+h, x:x+w]  # Extract the face region

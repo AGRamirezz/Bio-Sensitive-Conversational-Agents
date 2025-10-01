@@ -535,99 +535,93 @@ class WebcamPanel extends Panel {
             // Add a processing/active indicator
             this.drawActiveIndicator(g, offsetX + displayWidth - 20, offsetY + 20);
             
-            // Draw face detection rectangles and emotion labels if available
+            // Draw face detection rectangle and emotion label for the primary face
             if (this.lastEmotionData && this.lastEmotionData.face_locations && this.lastEmotionData.face_locations.length > 0) {
-              // Draw rectangles for each detected face
-              for (let i = 0; i < this.lastEmotionData.face_locations.length; i++) {
-                const [x, y, w, h] = this.lastEmotionData.face_locations[i];
-                // Scale coordinates to the display size
-                const scaledX = offsetX + (x / imgWidth) * displayWidth;
-                const scaledY = offsetY + (y / imgHeight) * displayHeight;
-                const scaledW = (w / imgWidth) * displayWidth;
-                const scaledH = (h / imgHeight) * displayHeight;
+              // Process only the primary (largest) detected face
+              const [x, y, w, h] = this.lastEmotionData.face_locations[0];
+              
+              // Scale coordinates to the display size
+              const scaledX = offsetX + (x / imgWidth) * displayWidth;
+              const scaledY = offsetY + (y / imgHeight) * displayHeight;
+              const scaledW = (w / imgWidth) * displayWidth;
+              const scaledH = (h / imgHeight) * displayHeight;
+              
+              // Get emotion color based on detected emotion
+              const emotion = this.lastEmotionData.emotion;
+              const emotionColor = this.getEmotionColor(emotion);
+              
+              // Draw rectangle around the primary face with enhanced animation
+              const pulseAmount = (sin(millis() * 0.005) + 1) * 0.5; // 0 to 1
+              g.push();
+              
+              // Draw background rectangle with slight transparency
+              g.fill(emotionColor.levels[0], emotionColor.levels[1], emotionColor.levels[2], 30);
+              g.rect(scaledX, scaledY, scaledW, scaledH, 5);
+              
+              // Draw main rectangle border with enhanced pulsing
+              g.noFill();
+              g.stroke(emotionColor);
+              g.strokeWeight(2 + pulseAmount * 2); // More pronounced pulsing for single face
+              g.rect(scaledX, scaledY, scaledW, scaledH, 5);
+              
+              // Draw corner highlights for better visibility
+              g.strokeWeight(3 + pulseAmount);
+              const cornerSize = 12; // Slightly larger corners for single face
+              // Top-left corner
+              g.line(scaledX, scaledY, scaledX + cornerSize, scaledY);
+              g.line(scaledX, scaledY, scaledX, scaledY + cornerSize);
+              // Top-right corner
+              g.line(scaledX + scaledW, scaledY, scaledX + scaledW - cornerSize, scaledY);
+              g.line(scaledX + scaledW, scaledY, scaledX + scaledW, scaledY + cornerSize);
+              // Bottom-left corner
+              g.line(scaledX, scaledY + scaledH, scaledX + cornerSize, scaledY + scaledH);
+              g.line(scaledX, scaledY + scaledH, scaledX, scaledY + scaledH - cornerSize);
+              // Bottom-right corner
+              g.line(scaledX + scaledW, scaledY + scaledH, scaledX + scaledW - cornerSize, scaledY + scaledH);
+              g.line(scaledX + scaledW, scaledY + scaledH, scaledX + scaledW, scaledY + scaledH - cornerSize);
+              
+              // Draw emotion label with better visual styling
+              if (this.lastEmotionData.emotions) {
+                const emotions = this.lastEmotionData.emotions;
+                const confidence = emotions[emotion] || 0;
                 
-                // Get emotion color based on detected emotion
-                const emotion = this.lastEmotionData.emotion;
-                const emotionColor = this.getEmotionColor(emotion);
-                
-                // Draw rectangle around face with animation effect
-                const pulseAmount = (sin(millis() * 0.005) + 1) * 0.5; // 0 to 1
-                g.push();
-                
-                // Draw background rectangle with slight transparency
-                g.fill(emotionColor.levels[0], emotionColor.levels[1], emotionColor.levels[2], 30);
-                g.rect(scaledX, scaledY, scaledW, scaledH, 5);
-                
-                // Draw rectangle border
-                g.noFill();
-                g.stroke(emotionColor);
-                g.strokeWeight(2 + pulseAmount);
-                g.rect(scaledX, scaledY, scaledW, scaledH, 5);
-                
-                // Draw corner highlights for better visibility
-                g.strokeWeight(3);
-                const cornerSize = 10;
-                // Top-left corner
-                g.line(scaledX, scaledY, scaledX + cornerSize, scaledY);
-                g.line(scaledX, scaledY, scaledX, scaledY + cornerSize);
-                // Top-right corner
-                g.line(scaledX + scaledW, scaledY, scaledX + scaledW - cornerSize, scaledY);
-                g.line(scaledX + scaledW, scaledY, scaledX + scaledW, scaledY + cornerSize);
-                // Bottom-left corner
-                g.line(scaledX, scaledY + scaledH, scaledX + cornerSize, scaledY + scaledH);
-                g.line(scaledX, scaledY + scaledH, scaledX, scaledY + scaledH - cornerSize);
-                // Bottom-right corner
-                g.line(scaledX + scaledW, scaledY + scaledH, scaledX + scaledW - cornerSize, scaledY + scaledH);
-                g.line(scaledX + scaledW, scaledY + scaledH, scaledX + scaledW, scaledY + scaledH - cornerSize);
-                
-                // Draw emotion label with better visual styling
-                if (this.lastEmotionData.emotions) {
-                  const emotions = this.lastEmotionData.emotions;
-                  const confidence = emotions[emotion] || 0;
-                  
-                  // Check if confidence is already in percentage scale (> 1.0)
-                  // DeepFace returns values on a 0-100 scale, not 0-1
-                  let scoreDisplay;
-                  if (confidence > 1.0) {
-                    // Already in percentage scale, don't multiply again
-                    scoreDisplay = Math.min(Math.round(confidence), 100);
-                  } else {
-                    // Standard 0-1 scale, convert to percentage
-                    scoreDisplay = Math.round(confidence * 100);
-                  }
-                  
-                  const labelText = `${emotion.toUpperCase()} (${scoreDisplay}%)`;
-                  
-                  // Background for the label at the top of the face box
-                  const labelPadding = 5;
-                  const labelWidth = g.textWidth(labelText) + labelPadding * 2;
-                  const labelHeight = 22;
-                  const labelX = scaledX + (scaledW - labelWidth) / 2; // Center the label on the face
-                  const labelY = scaledY - labelHeight - 5; // Position above the face
-                  
-                  // Draw label background
-                  g.fill(emotionColor.levels[0], emotionColor.levels[1], emotionColor.levels[2], 220);
-                  g.noStroke();
-                  g.rect(labelX, labelY, labelWidth, labelHeight, 3);
-                  
-                  // Draw label text
-                  g.fill(255);
-                  g.textAlign(CENTER, CENTER);
-                  g.textSize(14);
-                  g.textStyle(BOLD);
-                  g.text(labelText, labelX + labelWidth/2, labelY + labelHeight/2);
-                  g.textStyle(NORMAL);
+                // Check if confidence is already in percentage scale (> 1.0)
+                // DeepFace returns values on a 0-100 scale, not 0-1
+                let scoreDisplay;
+                if (confidence > 1.0) {
+                  // Already in percentage scale, don't multiply again
+                  scoreDisplay = Math.min(Math.round(confidence), 100);
+                } else {
+                  // Standard 0-1 scale, convert to percentage
+                  scoreDisplay = Math.round(confidence * 100);
                 }
                 
-                g.pop();
+                const labelText = `${emotion.toUpperCase()} (${scoreDisplay}%)`;
+                
+                // Background for the label at the top of the face box
+                const labelPadding = 6; // Slightly more padding for single face
+                const labelWidth = g.textWidth(labelText) + labelPadding * 2;
+                const labelHeight = 24; // Slightly taller for single face
+                const labelX = scaledX + (scaledW - labelWidth) / 2; // Center the label on the face
+                const labelY = scaledY - labelHeight - 8; // Position above the face with more space
+                
+                // Draw label background with enhanced styling
+                g.fill(emotionColor.levels[0], emotionColor.levels[1], emotionColor.levels[2], 240);
+                g.noStroke();
+                g.rect(labelX, labelY, labelWidth, labelHeight, 4);
+                
+                // Draw label text with enhanced styling
+                g.fill(255);
+                g.textAlign(CENTER, CENTER);
+                g.textSize(15); // Slightly larger text for single face
+                g.textStyle(BOLD);
+                g.text(labelText, labelX + labelWidth/2, labelY + labelHeight/2);
+                g.textStyle(NORMAL);
               }
               
-              // Display number of faces detected
-              const faceCount = this.lastEmotionData.face_locations.length;
-              g.fill(220);
-              g.textAlign(LEFT, TOP);
-              g.textSize(14);
-              g.text(`Faces: ${faceCount}`, offsetX + 10, offsetY + 10);
+              
+              g.pop();
+              
             } else {
               // No faces detected message (only show if webcam is working)
               if (frameCount % 30 < 15) { // Blink the message

@@ -74,6 +74,10 @@ let webcamControlsState = false; // Flag to indicate if webcam is controlling th
 let lastWebcamUpdate = 0; // Timestamp of last webcam update
 const WEBCAM_UPDATE_INTERVAL = 500; // Update from webcam twice per second (was 1000)
 
+// Autonomous mode update control (similar to webcam)
+let lastAutonomousUpdate = 0; // Timestamp of last autonomous update
+const AUTONOMOUS_UPDATE_INTERVAL = 1000; // Update autonomous gauges once per second for smooth simulation
+
 // Global variables for emotion tracking
 let emotionBuffer = []; // Buffer to store emotion data over time
 const EMOTION_WINDOW_SIZE = 5000; // 5 seconds in milliseconds
@@ -85,6 +89,62 @@ window.emotionIntensity = 0.5; // How strongly the current emotion is felt (0.0-
 
 let socket;
 let liveDataAvailable = false;
+
+// ============================================================================
+// MODE ISOLATION GUARDS - Prevent conflicting gauge updates
+// ============================================================================
+
+/**
+ * Checks if webcam is actively controlling the system state
+ */
+function isWebcamControlActive() {
+  return webcamControlsState === true;
+}
+
+/**
+ * Checks if EEG device is connected and streaming data
+ */
+function isEEGActive() {
+  return liveDataAvailable === true;
+}
+
+/**
+ * Checks if demo mode is currently active
+ */
+function isDemoActive() {
+  return demoMode === true;
+}
+
+/**
+ * Checks if autonomous mode should be active for gauge updates
+ * Autonomous mode is active when:
+ * - NOT in webcam control mode
+ * - NOT in demo mode
+ * (EEG can be active or inactive - doesn't affect gauge behavior)
+ */
+function isAutonomousModeActive() {
+  return !isWebcamControlActive() && !isDemoActive();
+}
+
+/**
+ * Determines if a specific source is allowed to update gauge values
+ * This prevents conflicting updates that cause flickering
+ */
+function canUpdateGauges(source) {
+  if (source === 'webcam') return isWebcamControlActive();
+  if (source === 'autonomous') return isAutonomousModeActive(); // Includes EEG-only mode
+  if (source === 'demo') return isDemoActive();
+  if (source === 'eeg') return false; // EEG doesn't update gauges directly
+  return false;
+}
+
+/**
+ * Determines what should control EEG wave visualization
+ */
+function getEEGWaveSource() {
+  if (isEEGActive()) return 'real_eeg';    // Real EEG data takes priority
+  return 'simulated';                      // Otherwise simulate based on emotion
+}
 
 function setupWebSocket() {
   socket = new WebSocket("ws://localhost:8765");
@@ -928,16 +988,18 @@ function playScene(sceneIndex) {
         console.log("Scene transition - updated webcamPanel emotion to:", scene.transitionTo);
       }
       
-      // Update bio signals for the new emotion
-      if (currentEmotion === "neutral") {
-        engagementScore = Math.min(engagementScore + 0.2, 0.9);
-        cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
-      } else if (currentEmotion === "happy") {
-        engagementScore = Math.min(engagementScore + 0.3, 0.9);
-        cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
-      } else if (currentEmotion === "frustrated") {
-        engagementScore = Math.max(engagementScore - 0.2, 0.2);
-        cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+      // Update bio signals for the new emotion (only in demo mode)
+      if (canUpdateGauges('demo')) {
+        if (currentEmotion === "neutral") {
+          engagementScore = Math.min(engagementScore + 0.2, 0.9);
+          cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
+        } else if (currentEmotion === "happy") {
+          engagementScore = Math.min(engagementScore + 0.3, 0.9);
+          cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
+        } else if (currentEmotion === "frustrated") {
+          engagementScore = Math.max(engagementScore - 0.2, 0.2);
+          cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+        }
       }
     }, scene.transitionDelay || 6000);
   }
@@ -1227,37 +1289,37 @@ function draw() {
   // Draw background
   background(darkBg);
   
-  // If in demo mode, slightly animate EEG parameters and update demo scene
-  if (demoMode) {
-    // Add subtle animation to EEG parameters
-    alphaAmplitude += sin(frameCount * 0.01) * 0.005;
-    betaAmplitude += sin(frameCount * 0.02) * 0.005;
-    thetaAmplitude += sin(frameCount * 0.015) * 0.003;
-    deltaAmplitude += sin(frameCount * 0.005) * 0.002;
-    
-    // Update demo scene state
+  // ============================================================================
+  // MODE-BASED UPDATE LOGIC - Prevents conflicting gauge updates
+  // ============================================================================
+  
+  if (isDemoActive()) {
+    // Demo mode: scripted behavior
     updateDemoScene();
-  } 
-  // Check if webcam is actively controlling state
-  else if (webcamControlsState && webcamPanel) {
-    // Get the current time
+    
+    // Add subtle animation to EEG parameters in demo mode
+    if (getEEGWaveSource() === 'simulated') {
+      alphaAmplitude += sin(frameCount * 0.01) * 0.005;
+      betaAmplitude += sin(frameCount * 0.02) * 0.005;
+      thetaAmplitude += sin(frameCount * 0.015) * 0.003;
+      deltaAmplitude += sin(frameCount * 0.005) * 0.002;
+    }
+    
+  } else if (isWebcamControlActive()) {
+    // Webcam mode: webcam controls gauges exclusively
     let currentTime = millis();
     
-    // Check if it's time for a webcam state update (twice per second now)
     if (currentTime - lastWebcamUpdate > WEBCAM_UPDATE_INTERVAL) {
       lastWebcamUpdate = currentTime;
       
-      // CRITICAL WEBCAM EMOTION SYNCHRONIZATION
-      // This section ensures the emotion bar always updates in webcam mode
-      
-      // First check if we have any emotion data from the webcam
+      // WEBCAM EMOTION SYNCHRONIZATION
       let webcamEmotion = null;
       if (webcamPanel.bioSignalData && webcamPanel.bioSignalData.emotion) {
         webcamEmotion = webcamPanel.bioSignalData.emotion;
         
         // Force the global emotion to match webcam detection
         if (currentEmotion !== webcamEmotion) {
-          console.log(`SYNC: Updating emotion from ${currentEmotion} to webcam emotion ${webcamEmotion}`);
+          console.log(`🎥 WEBCAM MODE: Updating emotion from ${currentEmotion} to ${webcamEmotion}`);
           currentEmotion = webcamEmotion;
           emotionIntensity = 0.7; // Set moderate intensity
           
@@ -1272,8 +1334,10 @@ function draw() {
         console.log("No webcam emotion data available yet");
       }
       
-      // ALWAYS update metrics if available - this part works correctly
-      if (webcamPanel.bioSignalData) {
+      // WEBCAM GAUGE UPDATES (with mode guard)
+      if (webcamPanel.bioSignalData && canUpdateGauges('webcam')) {
+        console.log("🎯 WEBCAM: Updating gauges from webcam data");
+        
         // Update engagement
         if (webcamPanel.bioSignalData.engagement !== undefined) {
           engagementScore = webcamPanel.bioSignalData.engagement;
@@ -1293,43 +1357,61 @@ function draw() {
         }
       }
       
-      // Update EEG wave parameters to match the current emotional state
-      updateEEGWavesForEmotion(currentEmotion);
+      // Update EEG wave parameters to match current emotional state (if simulated)
+      if (getEEGWaveSource() === 'simulated') {
+        updateEEGWavesForEmotion(currentEmotion);
+      }
     }
     
-    // In webcam mode, add subtle random variations to the EEG signals only
-    // - NOT to the emotion intensity which should stay stable based on detected emotion
-    alphaAmplitude += (sin(frameCount * 0.01) * 0.003) + (random(-0.002, 0.002));
-    betaAmplitude += (sin(frameCount * 0.02) * 0.003) + (random(-0.002, 0.002));
-    thetaAmplitude += (sin(frameCount * 0.015) * 0.002) + (random(-0.001, 0.001));
-    deltaAmplitude += (sin(frameCount * 0.005) * 0.002) + (random(-0.001, 0.001));
+    // Add subtle variations to EEG signals only (if simulated)
+    if (getEEGWaveSource() === 'simulated') {
+      alphaAmplitude += (sin(frameCount * 0.01) * 0.003) + (random(-0.002, 0.002));
+      betaAmplitude += (sin(frameCount * 0.02) * 0.003) + (random(-0.002, 0.002));
+      thetaAmplitude += (sin(frameCount * 0.015) * 0.002) + (random(-0.001, 0.001));
+      deltaAmplitude += (sin(frameCount * 0.005) * 0.002) + (random(-0.001, 0.001));
+      
+      // Keep values in reasonable range
+      alphaAmplitude = constrain(alphaAmplitude, 0.1, 1.0);
+      betaAmplitude = constrain(betaAmplitude, 0.1, 1.0);
+      thetaAmplitude = constrain(thetaAmplitude, 0.1, 0.8);
+      deltaAmplitude = constrain(deltaAmplitude, 0.1, 0.8);
+    }
     
-    // Keep values in reasonable range
-    alphaAmplitude = constrain(alphaAmplitude, 0.1, 1.0);
-    betaAmplitude = constrain(betaAmplitude, 0.1, 1.0);
-    thetaAmplitude = constrain(thetaAmplitude, 0.1, 0.8);
-    deltaAmplitude = constrain(deltaAmplitude, 0.1, 0.8);
-    
-    // REMOVE this line that was causing continuous fluctuations in emotion intensity
-    // emotionIntensity = emotionIntensity * 0.999 + (sin(frameCount * 0.01) * 0.003);
-    // Instead, let the emotion intensity decay very slowly for stability
+    // Let emotion intensity decay slowly for stability
     emotionIntensity = emotionIntensity * 0.99995;
     emotionIntensity = constrain(emotionIntensity, 0.5, 1.0);
-  } 
-  // Default non-webcam, non-demo mode
-  else {
-    // only jitter when *no* live EEG data
-    if (!liveDataAvailable){// In this mode, add subtle random variations to the EEG signals only
-      updateBioSignals()
+    
+  } else if (isAutonomousModeActive()) {
+    // Autonomous mode: includes EEG-only mode
+    // Gauges behave autonomously while EEG provides real brainwave data
+    let currentTime = millis();
+    
+    // Only update gauges at controlled intervals (like webcam mode)
+    if (currentTime - lastAutonomousUpdate > AUTONOMOUS_UPDATE_INTERVAL) {
+      lastAutonomousUpdate = currentTime;
+      
+      if (canUpdateGauges('autonomous')) {
+        console.log("🤖 AUTONOMOUS: Smooth update cycle - EEG active =", isEEGActive());
+        updateBioSignalsSmooth(); // New smooth version
+        updateEmotionStateSmooth(); // New smooth version
       }
+    }
     
+    // Always update EEG waves (if simulated) for visual continuity
+    if (getEEGWaveSource() === 'simulated') {
+      updateSimulatedEEGWaves();
+    }
     
-    // REMOVE this line that was causing continuous fluctuations in emotion intensity
-    // emotionIntensity += (sin(frameCount * 0.01) * 0.005);
-    // Instead, let the emotion intensity decay very slowly
+    // Let emotion intensity decay very slowly for stability
     emotionIntensity = emotionIntensity * 0.99995;
     emotionIntensity = constrain(emotionIntensity, 0.5, 1.0);
   }
+  
+  // ============================================================================
+  // EEG WAVE HANDLING (separate from gauge logic)
+  // Real EEG data is updated in updateBioSignalsFromLive() via WebSocket
+  // No additional action needed here when real EEG is active
+  // ============================================================================
   
   // Update webcamPanel with the current emotion
   if (webcamPanel) {
@@ -2501,9 +2583,12 @@ function addChatMessage(sender, text) {
   let pulseColor = sender === "User" ? color(60, 60, 80) : accentColor2;
   addPulseEffect(chatX, chatY, chatW, chatH, pulseColor);
   
-  // Change engagement score slightly for demo purposes
-  engagementScore += (Math.random() - 0.5) * 0.1;
-  engagementScore = constrain(engagementScore, 0.2, 0.95);
+  // Change engagement score slightly (only in autonomous mode)
+  if (canUpdateGauges('autonomous')) {
+    console.log("🎯 CHAT: Updating engagement from chat interaction");
+    engagementScore += (Math.random() - 0.5) * 0.1;
+    engagementScore = constrain(engagementScore, 0.2, 0.95);
+  }
   
   // Add engagement score update to backend
   if (Math.random() < 0.3) {
@@ -2868,10 +2953,12 @@ function updateEmotionState() {
         emotionIntensity = 0.5 + sin(millis() * 0.0005) * 0.3;
       }
       
-      // Update engagement score based on demo scene
-      engagementScore = lerp(engagementScore, 
-                            demoScenes[currentScene].bioSignals.engagement, 
-                            0.05);
+      // Update engagement score based on demo scene (only in demo mode)
+      if (canUpdateGauges('demo')) {
+        engagementScore = lerp(engagementScore, 
+                              demoScenes[currentScene].bioSignals.engagement, 
+                              0.05);
+      }
     }
     
     // In webcam mode, don't actively change emotions
@@ -3003,6 +3090,97 @@ function updateEmotionState() {
 
 // Separate function to update bio-signals based on emotional state
 function updateBioSignals() {
+  // ============================================================================
+  // EEG WAVE UPDATES (only when using simulated EEG)
+  // ============================================================================
+  if (getEEGWaveSource() === 'simulated') {
+    updateSimulatedEEGWaves();
+  }
+  // Note: When real EEG is active, wave data is updated in updateBioSignalsFromLive()
+  
+  // ============================================================================
+  // GAUGE UPDATES (only in autonomous mode)
+  // ============================================================================
+  if (canUpdateGauges('autonomous')) {
+    console.log("🎯 AUTONOMOUS: Updating gauges from autonomous logic");
+    
+    // Update engagement score with small fluctuations
+    engagementScore += random(-0.03, 0.03) * (1 - emotionStability);
+    engagementScore = constrain(engagementScore, 0.1, 0.9);
+    
+    // Adjust engagement based on current emotion (subtle influence)
+    if (currentEmotion === "happy") {
+      engagementScore = lerp(engagementScore, 0.8, 0.01);
+    } else if (currentEmotion === "frustrated") {
+      engagementScore = lerp(engagementScore, 0.3, 0.01);
+    }
+  }
+}
+
+// ============================================================================
+// SMOOTH AUTONOMOUS MODE FUNCTIONS - Fix jittery behavior
+// ============================================================================
+
+/**
+ * Smooth version of updateBioSignals for autonomous mode
+ * Updates at controlled intervals instead of every frame
+ */
+function updateBioSignalsSmooth() {
+  // Only update gauges, EEG waves are handled separately for visual continuity
+  console.log("🎯 SMOOTH AUTONOMOUS: Updating gauges smoothly");
+  
+  // Smooth engagement updates (much gentler than frame-rate updates)
+  const targetEngagement = getTargetEngagementForEmotion(currentEmotion);
+  engagementScore = lerp(engagementScore, targetEngagement, 0.1); // 10% lerp for smooth transition
+  engagementScore = constrain(engagementScore, 0.1, 0.9);
+  
+  // Smooth attention updates
+  const targetAttention = getTargetAttentionForEmotion(currentEmotion);
+  attentionScore = lerp(attentionScore, targetAttention, 0.08); // Slightly slower
+  attentionScore = constrain(attentionScore, 0.1, 0.9);
+  
+  // Smooth cognitive load updates  
+  const targetCognitiveLoad = getTargetCognitiveLoadForEmotion(currentEmotion);
+  cognitiveLoad = lerp(cognitiveLoad, targetCognitiveLoad, 0.12); // Slightly faster
+  cognitiveLoad = constrain(cognitiveLoad, 0.1, 0.9);
+}
+
+/**
+ * Smooth version of updateEmotionState for autonomous mode
+ * Changes emotions gradually instead of sudden jumps
+ */
+function updateEmotionStateSmooth() {
+  let currentTime = millis();
+  
+  // Allow very small fluctuations in intensity (much smaller than before)
+  emotionIntensity += random(-0.02, 0.02); // Reduced from 0.1 to 0.02
+  emotionIntensity = constrain(emotionIntensity, 0.5, 1.0);
+  
+  // Only consider emotion changes if cooldown period has passed (keep existing logic)
+  if (currentTime - lastEmotionChange > emotionCooldown) {
+    // Use existing emotion transition logic but with reduced probability for smoother changes
+    let transitionProbability = calculateEmotionTransitionProbability() * 0.3; // Reduce by 70% for smoother transitions
+    
+    if (random() < transitionProbability) {
+      // Trigger a smooth emotion change
+      let newEmotion = selectNewEmotionSmooth();
+      if (newEmotion !== currentEmotion) {
+        console.log("🎭 SMOOTH AUTONOMOUS: Emotion transition from", currentEmotion, "to", newEmotion);
+        currentEmotion = newEmotion;
+        emotionIntensity = 0.7; // Moderate intensity
+        lastEmotionChange = currentTime;
+        
+        // Add pulse effect for visual feedback
+        addPulseEffect(stateX, stateY, stateW, stateH, accentColor1);
+      }
+    }
+  }
+}
+
+/**
+ * Updates simulated EEG waves for visual continuity (called every frame)
+ */
+function updateSimulatedEEGWaves() {
   // Update brain wave amplitudes based on current emotion and intensity
   if (currentEmotion === "happy") {
     alphaAmplitude = 0.8 + sin(millis() * 0.001) * 0.1 * emotionIntensity;
@@ -3025,17 +3203,74 @@ function updateBioSignals() {
     thetaAmplitude = 0.4 + sin(millis() * 0.0015) * 0.1 * emotionIntensity;
     deltaAmplitude = 0.5 + sin(millis() * 0.0005) * 0.15 * emotionIntensity;
   }
+}
+
+// Helper functions for smooth autonomous mode
+function getTargetEngagementForEmotion(emotion) {
+  const baseTargets = {
+    'happy': 0.8,
+    'neutral': 0.6, 
+    'confused': 0.45,
+    'frustrated': 0.3
+  };
+  const base = baseTargets[emotion] || 0.6;
+  return base + random(-0.1, 0.1); // Small random variation
+}
+
+function getTargetAttentionForEmotion(emotion) {
+  const baseTargets = {
+    'happy': 0.75,
+    'neutral': 0.65,
+    'confused': 0.55, 
+    'frustrated': 0.4
+  };
+  const base = baseTargets[emotion] || 0.65;
+  return base + random(-0.08, 0.08); // Small random variation
+}
+
+function getTargetCognitiveLoadForEmotion(emotion) {
+  const baseTargets = {
+    'happy': 0.3,
+    'neutral': 0.5,
+    'confused': 0.75,
+    'frustrated': 0.85
+  };
+  const base = baseTargets[emotion] || 0.5;
+  return base + random(-0.1, 0.1); // Small random variation
+}
+
+function calculateEmotionTransitionProbability() {
+  // Simplified version of existing logic
+  let probability = 0.02; // Base 2% chance per update cycle
   
-  // Update engagement score with small fluctuations
-  engagementScore += random(-0.03, 0.03) * (1 - emotionStability);
-  engagementScore = constrain(engagementScore, 0.1, 0.9);
+  // Engagement-based factors
+  if (engagementScore < 0.3) probability += 0.03;
+  if (engagementScore > 0.7) probability += 0.02;
   
-  // Adjust engagement based on current emotion (subtle influence)
-  if (currentEmotion === "happy") {
-    engagementScore = lerp(engagementScore, 0.8, 0.01);
-  } else if (currentEmotion === "frustrated") {
-    engagementScore = lerp(engagementScore, 0.3, 0.01);
+  return probability;
+}
+
+function selectNewEmotionSmooth() {
+  // Simplified emotion selection for smooth transitions
+  const emotions = ['happy', 'neutral', 'confused', 'frustrated'];
+  const weights = {
+    'happy': currentEmotion === 'neutral' ? 0.4 : 0.2,
+    'neutral': 0.3,
+    'confused': currentEmotion === 'neutral' ? 0.3 : 0.2, 
+    'frustrated': currentEmotion === 'confused' ? 0.3 : 0.1
+  };
+  
+  let random_val = random();
+  let cumulative = 0;
+  
+  for (let emotion of emotions) {
+    cumulative += weights[emotion];
+    if (random_val <= cumulative) {
+      return emotion;
+    }
   }
+  
+  return 'neutral'; // fallback
 }
 
 // Update demo scenes to follow the specified emotional progression
@@ -3057,11 +3292,13 @@ function updateDemoScene() {
   if (scene.transitionTo && !scene.transitioned && elapsedTime >= scene.transitionDelay) {
     // If staying in the same emotion but with different intensity (Scene 3 - confused)
     if (scene.transitionTo === currentEmotion) {
-      // Keep same emotion but worsen cognitive metrics
-      emotionIntensity = 0.9; // Increase intensity
-      cognitiveLoad = Math.min(cognitiveLoad + 0.15, 0.95); // Increase cognitive load
-      engagementScore = Math.max(engagementScore - 0.1, 0.3); // Decrease engagement
-      attentionScore = Math.max(attentionScore - 0.1, 0.4); // Decrease attention
+      // Keep same emotion but worsen cognitive metrics (only in demo mode)
+      if (canUpdateGauges('demo')) {
+        emotionIntensity = 0.9; // Increase intensity
+        cognitiveLoad = Math.min(cognitiveLoad + 0.15, 0.95); // Increase cognitive load
+        engagementScore = Math.max(engagementScore - 0.1, 0.3); // Decrease engagement
+        attentionScore = Math.max(attentionScore - 0.1, 0.4); // Decrease attention
+      }
       
       // Add a subtle visual indication
       addPulseEffect(stateX, stateY, stateW, stateH, color(255, 180, 0)); // Orange pulse for deepening confusion
@@ -3086,16 +3323,18 @@ function updateDemoScene() {
       // Remove emotion change message
       // addBackendMessage("Emotion changed to " + scene.transitionTo, "cognitive");
     
-      // Update bio signals for the new emotion
-      if (currentEmotion === "neutral") {
-        engagementScore = Math.min(engagementScore + 0.2, 0.9);
-        cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
-      } else if (currentEmotion === "happy") {
-        engagementScore = Math.min(engagementScore + 0.3, 0.9);
-        cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
-      } else if (currentEmotion === "frustrated") {
-        engagementScore = Math.max(engagementScore - 0.2, 0.2);
-        cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+      // Update bio signals for the new emotion (only in demo mode)
+      if (canUpdateGauges('demo')) {
+        if (currentEmotion === "neutral") {
+          engagementScore = Math.min(engagementScore + 0.2, 0.9);
+          cognitiveLoad = Math.max(cognitiveLoad - 0.2, 0.3);
+        } else if (currentEmotion === "happy") {
+          engagementScore = Math.min(engagementScore + 0.3, 0.9);
+          cognitiveLoad = Math.max(cognitiveLoad - 0.3, 0.2);
+        } else if (currentEmotion === "frustrated") {
+          engagementScore = Math.max(engagementScore - 0.2, 0.2);
+          cognitiveLoad = Math.min(cognitiveLoad + 0.2, 0.9);
+        }
       }
     }
     
@@ -3441,6 +3680,14 @@ function triggerRandomStateChange() {
 
 // Function to update cognitive metrics based on emotion
 function updateCognitiveMetricsForEmotion(emotion) {
+  // Only update gauges in autonomous mode
+  if (!canUpdateGauges('autonomous')) {
+    console.log("🚫 COGNITIVE: Blocked gauge updates - not in autonomous mode");
+    return; // Early exit if not allowed
+  }
+  
+  console.log("🎯 COGNITIVE: Updating gauges for emotion:", emotion);
+  
   if (emotion === "happy") {
     engagementScore = Math.min(0.8 + Math.random() * 0.15, 0.95);
     attentionScore = Math.min(0.75 + Math.random() * 0.15, 0.9);
